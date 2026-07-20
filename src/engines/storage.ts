@@ -198,8 +198,8 @@ export const INITIAL_TASKS: Task[] = [
   },
   {
     id: 'task_promote_worth',
-    title: 'Write a Glass-Refined Article or Post about PayWorth',
-    description: 'Share a high-quality review of PayWorth’s liquid-glass design or secure ledger ecosystem on any developer blog or social feed.',
+    title: 'Write an Analytical Post about PayWorth',
+    description: 'Share a high-quality review of PayWorth’s modern finance ecosystem on your social feed, blog, or professional network.',
     category: 'advertiser',
     reward: 200,
     difficulty: 'Hard',
@@ -214,14 +214,14 @@ export const INITIAL_CAMPAIGNS: Campaign[] = [
   {
     id: 'camp_01',
     title: 'Product Beta Testing Feedback',
-    description: 'Test our latest liquid design communications dashboard, submit a 3-sentence user experience analysis, and screenshot.',
+    description: 'Test our latest secure payment dashboard, submit a 3-sentence user experience analysis, and screenshot.',
     category: 'Business',
     reward: 80,
     slots: 100,
     remainingSlots: 72,
     rewardPool: 8000,
     creatorId: 'user_admin',
-    creatorName: 'Glassline Studio Admin',
+    creatorName: 'PayWorth Admin',
     trustRating: 98,
     deadline: '2026-08-30',
     status: 'active',
@@ -230,7 +230,7 @@ export const INITIAL_CAMPAIGNS: Campaign[] = [
   {
     id: 'camp_02',
     title: 'Tech Blog Referral Share',
-    description: 'Share our project repository on your professional developer channel, and submit the link below for immediate audit review.',
+    description: 'Share our platform on your professional network or social feed, and submit the link below for immediate validation review.',
     category: 'Advertiser',
     reward: 120,
     slots: 50,
@@ -290,9 +290,16 @@ export function getInitialState(): AppState {
     trustHistory: [{ date: '2026-07-01', change: 100, reason: 'Founding account status' }],
     virtualAccount: {
       accountNumber: 'VA-994851240',
-      bankName: 'Silicon Ledger Bank',
-      holderName: 'GLASSLINE FOUNDRY',
+      bankName: 'PayWorth Core Bank',
+      holderName: 'PAYWORTH FOUNDATION',
     },
+    walletNumber: '4125839471',
+    walletStatus: 'active',
+    walletPin: '1234',
+    dailyLimit: 25000,
+    monthlyLimit: 250000,
+    spendingLimit: 15000,
+    walletLevel: 3,
   };
 
   const initialLedger: LedgerEntry[] = [
@@ -354,6 +361,38 @@ export function loadState(): AppState {
       const fresh = getInitialState();
       saveState(fresh);
       return fresh;
+    }
+
+    // Dynamic backward compatibility migration for pre-existing records
+    if (state.users) {
+      Object.keys(state.users).forEach((key) => {
+        const u = state.users[key];
+        if (!u.walletNumber) {
+          // Generate deterministic/stable wallet numbers based on username length or random value
+          u.walletNumber = `412${Math.floor(1000000 + Math.random() * 9000000)}`;
+          u.walletStatus = u.walletStatus || 'active';
+          u.walletPin = u.walletPin || '1234';
+          u.dailyLimit = u.dailyLimit || (u.kycStatus === 'verified' ? 25000 : 5000);
+          u.monthlyLimit = u.monthlyLimit || (u.kycStatus === 'verified' ? 250000 : 50000);
+          u.spendingLimit = u.spendingLimit || (u.kycStatus === 'verified' ? 15000 : 2000);
+          u.walletLevel = u.walletLevel || (u.kycStatus === 'verified' ? 2 : 1);
+        }
+      });
+      if (state.currentUser && !state.currentUser.walletNumber) {
+        const matching = state.users[state.currentUser.email.toLowerCase()] || state.users[state.currentUser.id];
+        if (matching) {
+          state.currentUser = matching;
+        } else {
+          const u = state.currentUser;
+          u.walletNumber = `412${Math.floor(1000000 + Math.random() * 9000000)}`;
+          u.walletStatus = u.walletStatus || 'active';
+          u.walletPin = u.walletPin || '1234';
+          u.dailyLimit = u.dailyLimit || (u.kycStatus === 'verified' ? 25000 : 5000);
+          u.monthlyLimit = u.monthlyLimit || (u.kycStatus === 'verified' ? 250000 : 50000);
+          u.spendingLimit = u.spendingLimit || (u.kycStatus === 'verified' ? 15000 : 2000);
+          u.walletLevel = u.walletLevel || (u.kycStatus === 'verified' ? 2 : 1);
+        }
+      }
     }
     return state;
   } catch (err) {

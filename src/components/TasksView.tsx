@@ -30,6 +30,10 @@ export default function TasksView() {
   const [evidenceText, setEvidenceText] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [saveList, setSaveList] = useState<string[]>([]);
+  
+  // Custom non-blocking inline feedback messages
+  const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
+  const [feedbackType, setFeedbackType] = useState<'success' | 'warning' | 'error' | null>(null);
 
   // Toggle saving
   const handleToggleSave = (id: string, e: React.MouseEvent) => {
@@ -41,24 +45,34 @@ export default function TasksView() {
     }
   };
 
+  const showFeedback = (msg: string, type: 'success' | 'warning' | 'error') => {
+    setFeedbackMsg(msg);
+    setFeedbackType(type);
+    setTimeout(() => {
+      setFeedbackMsg(null);
+      setFeedbackType(null);
+    }, 5000);
+  };
+
   const handleReport = (title: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    alert(`Thank you. A security review has been flagged for task: "${title}".`);
+    showFeedback(`Security review ticket created. Task "${title}" flagged for compliance.`, 'warning');
   };
 
   const handleShare = (title: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (navigator.share) {
-      navigator.share({ title: `Earn PWC: ${title}`, url: window.location.href });
+      navigator.share({ title: `Earn PWC: ${title}`, url: window.location.href })
+        .catch(() => {});
     } else {
       navigator.clipboard.writeText(`Earn with PayWorth: ${title} at ${window.location.href}`);
-      alert('Task share credentials copied to clipboard!');
+      showFeedback('Task share link copied to clipboard successfully!', 'success');
     }
   };
 
   const handleStartTask = (task: Task) => {
     if (currentUser && currentUser.trustScore < task.trustRequirement) {
-      alert(`Upgrade Restricted: Your current Trust Rating is ${currentUser.trustScore}%, but this task requires a minimum of ${task.trustRequirement}%. Complete smaller verification tasks first.`);
+      showFeedback(`Upgrade Restricted: Your Trust Rating is ${currentUser.trustScore}%, but this requires a minimum of ${task.trustRequirement}%. Complete smaller daily tasks first.`, 'error');
       return;
     }
     setActiveTask(task);
@@ -117,6 +131,26 @@ export default function TasksView() {
           Perform assignments, submit verifiable screenshots, links or proof, and claim instant ledger credits.
         </p>
       </div>
+
+      <AnimatePresence>
+        {feedbackMsg && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className={`mb-4 p-3.5 border text-xs rounded-xl flex items-center gap-2 font-sans ${
+              feedbackType === 'success'
+                ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-400'
+                : feedbackType === 'error'
+                ? 'bg-red-500/10 border-red-500/25 text-red-400'
+                : 'bg-amber-500/10 border-amber-500/25 text-amber-300'
+            }`}
+          >
+            <span>{feedbackType === 'success' ? '✅' : feedbackType === 'error' ? '🚫' : '⚠️'}</span>
+            <span>{feedbackMsg}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Search & Filter Options */}
       <div className="space-y-3 mb-4">

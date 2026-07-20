@@ -39,6 +39,13 @@ export interface User {
     bankName: string;
     holderName: string;
   } | null;
+  walletNumber: string;
+  walletStatus: 'active' | 'locked' | 'frozen';
+  walletPin: string | null;
+  dailyLimit: number;
+  monthlyLimit: number;
+  spendingLimit: number;
+  walletLevel: number;
 }
 
 export interface LedgerEntry {
@@ -60,8 +67,12 @@ export interface LedgerEntry {
     | 'transfer_sent'
     | 'transfer_received'
     | 'campaign_escrow'
-    | 'campaign_refund';
-  status: 'completed' | 'pending' | 'failed';
+    | 'campaign_refund'
+    | 'merchant_payment'
+    | 'cashback'
+    | 'transfer_reversal';
+  status: 'completed' | 'pending' | 'failed' | 'reversed';
+  referenceId?: string;
 }
 
 export type TaskCategory =

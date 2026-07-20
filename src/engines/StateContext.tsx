@@ -1,5 +1,20 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import {
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut,
+  sendPasswordResetEmail,
+  signInWithPopup,
+  onAuthStateChanged
+} from 'firebase/auth';
+import {
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc
+} from 'firebase/firestore';
+import { auth, googleAuthProvider, db } from './firebase';
+import {
   loadState,
   saveState,
   applyLedgerCredit,
@@ -61,6 +76,14 @@ interface StateContextType {
   markNotificationRead: (id: string) => void;
   playGameAndSubmitScore: (gameId: string, score: number) => Promise<{ success: boolean; reward: number; xp: number; leveledUp: boolean }>;
   submitFundingRequest: (amount: number, reason: string) => Promise<boolean>;
+  submitKyc: (docReference: string) => Promise<boolean>;
+  setWalletPin: (pin: string) => Promise<boolean>;
+  updateWalletLimits: (daily: number, monthly: number, spending: number) => Promise<boolean>;
+  updateWalletStatus: (status: 'active' | 'locked' | 'frozen') => Promise<boolean>;
+  fundWallet: (amount: number, provider: string) => Promise<boolean>;
+  payMerchant: (merchantId: string, amount: number, description: string) => Promise<boolean>;
+  sendWalletTransfer: (targetWalletNumber: string, amount: number, note?: string) => Promise<boolean>;
+  reverseTransaction: (txId: string) => Promise<boolean>;
   
   // Admin Methods
   adminApproveWithdrawal: (id: string, approve: boolean) => Promise<void>;
@@ -74,6 +97,10 @@ interface StateContextType {
 
 const StateContext = createContext<StateContextType | undefined>(undefined);
 
+const generateUniqueId = (prefix: string) => {
+  return `${prefix}_${Date.now()}_${Math.floor(Math.random() * 1000000)}`;
+};
+
 export function StateProvider({ children }: { children: React.ReactNode }) {
   const [appState, setAppState] = useState<AppState>(loadState);
   const [loading, setLoading] = useState(false);
@@ -86,6 +113,62 @@ export function StateProvider({ children }: { children: React.ReactNode }) {
     saveState(appState);
   }, [appState]);
 
+  // Auth State Listener to synchronize with live Firebase
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        try {
+          const userDocRef = doc(db, 'users', firebaseUser.uid);
+          const userDocSnap = await getDoc(userDocRef);
+          if (userDocSnap.exists()) {
+            const userData = userDocSnap.data() as User;
+            setAppState((prev) => ({
+              ...prev,
+              currentUser: userData,
+              users: { ...prev.users, [userData.email.toLowerCase()]: userData }
+            }));
+          } else {
+            const lowerEmail = (firebaseUser.email || '').toLowerCase();
+            const localUser = appState.users[lowerEmail];
+            if (localUser) {
+              const updatedUser = { ...localUser, id: firebaseUser.uid };
+              await setDoc(userDocRef, updatedUser);
+              setAppState((prev) => ({
+                ...prev,
+                currentUser: updatedUser,
+                users: { ...prev.users, [lowerEmail]: updatedUser }
+              }));
+            }
+          }
+        } catch (err) {
+          console.error('Error synchronizing auth state with Firestore:', err);
+        }
+      } else {
+        setAppState((prev) => ({
+          ...prev,
+          currentUser: null,
+        }));
+      }
+    });
+
+    return () => unsubscribe();
+  }, [appState.users]);
+
+  // Sync current user's profile to Firestore whenever it changes
+  useEffect(() => {
+    if (appState.currentUser) {
+      const syncUserToFirestore = async () => {
+        try {
+          const userDocRef = doc(db, 'users', appState.currentUser!.id);
+          await setDoc(userDocRef, appState.currentUser);
+        } catch (err) {
+          console.warn('Firestore offline or synchronization restricted; updates saved locally.', err);
+        }
+      };
+      syncUserToFirestore();
+    }
+  }, [appState.currentUser]);
+
   const clearMessages = () => {
     setError(null);
     setSuccessMessage(null);
@@ -95,234 +178,529 @@ export function StateProvider({ children }: { children: React.ReactNode }) {
   const login = async (email: string, password: string): Promise<boolean> => {
     setLoading(true);
     clearMessages();
-    await new Promise((r) => setTimeout(r, 600)); // Cinematic delay
-    const lowerEmail = email.trim().toLowerCase();
-    const user = appState.users[lowerEmail];
-    if (!user) {
-      setError('Invalid email or password credentials. Please verify details.');
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const firebaseUser = userCredential.user;
+      
+      const userDocRef = doc(db, 'users', firebaseUser.uid);
+      const userDocSnap = await getDoc(userDocRef);
+      let user: User;
+      
+      if (userDocSnap.exists()) {
+        user = userDocSnap.data() as User;
+      } else {
+        const lowerEmail = email.trim().toLowerCase();
+        const localUser = appState.users[lowerEmail];
+        if (localUser) {
+          user = { ...localUser, id: firebaseUser.uid };
+        } else {
+          user = {
+            id: firebaseUser.uid,
+            email: lowerEmail,
+            username: email.split('@')[0],
+            avatar: `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200`,
+            isVerified: false,
+            pwcBalance: 0,
+            pendingBalance: 0,
+            lockedBalance: 0,
+            lifetimeEarned: 0,
+            lifetimeWithdrawn: 0,
+            trustScore: 50,
+            xp: 0,
+            level: 1,
+            membershipTier: 'Dark Bronze',
+            referralCode: `PW_${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
+            referredBy: null,
+            onboardingCompleted: false,
+            welcomeCompleted: false,
+            emailVerified: false,
+            achievementsClaimed: [],
+            dailyRewardClaimedAt: null,
+            luckyWheelSpinsRemaining: 1,
+            gamesPlayedToday: {},
+            kycStatus: 'unverified',
+            trustHistory: [
+              {
+                date: new Date().toISOString().split('T')[0],
+                change: 50,
+                reason: 'Initial security trust score provisioning',
+              },
+            ],
+            virtualAccount: null,
+            walletNumber: `412${Math.floor(1000000 + Math.random() * 9000000)}`,
+            walletStatus: 'active',
+            walletPin: null,
+            dailyLimit: 5000,
+            monthlyLimit: 50000,
+            spendingLimit: 2000,
+            walletLevel: 1,
+          };
+        }
+        try {
+          await setDoc(userDocRef, user);
+        } catch (e) {
+          console.warn('Unable to write user document to cloud store, working with local database state.', e);
+        }
+      }
+      
+      setAppState((prev) => ({
+        ...prev,
+        currentUser: user,
+        users: { ...prev.users, [email.toLowerCase()]: user },
+      }));
+      setSuccessMessage(`Welcome back, ${user.username}!`);
+      setLoading(false);
+      return true;
+    } catch (err: any) {
+      console.error(err);
+      if (err.code === 'auth/network-request-failed' || err.message?.includes('network-request-failed') || err.message?.includes('offline')) {
+        const lowerEmail = email.trim().toLowerCase();
+        const user = appState.users[lowerEmail];
+        if (user) {
+          setAppState((prev) => ({
+            ...prev,
+            currentUser: user,
+          }));
+          setSuccessMessage(`Welcome back, ${user.username}! (Operating in secure local mode)`);
+          setLoading(false);
+          return true;
+        } else {
+          setError('Invalid email or password credentials. Please verify details.');
+          setLoading(false);
+          return false;
+        }
+      }
+      setError(err.message || 'Invalid email or password credentials. Please verify details.');
       setLoading(false);
       return false;
     }
-    // We simulate password validation
-    setAppState((prev) => ({
-      ...prev,
-      currentUser: user,
-    }));
-    setSuccessMessage(`Welcome back, ${user.username}!`);
-    setLoading(false);
-    return true;
   };
 
   const signup = async (email: string, password: string, username: string, referralCode?: string): Promise<boolean> => {
     setLoading(true);
     clearMessages();
-    await new Promise((r) => setTimeout(r, 800));
-    const lowerEmail = email.trim().toLowerCase();
-    if (appState.users[lowerEmail]) {
-      setError('An account with this email address already exists.');
-      setLoading(false);
-      return false;
-    }
-
-    let referredBy: string | null = null;
-    if (referralCode) {
-      const referrer = (Object.values(appState.users) as User[]).find(
-        (u) => u.referralCode.toUpperCase() === referralCode.toUpperCase()
-      );
-      if (referrer) {
-        referredBy = referrer.id;
-      } else {
-        setError('Referral code not found. You can leave it blank to continue.');
-        setLoading(false);
-        return false;
-      }
-    }
-
-    const userId = `usr_${Date.now()}`;
-    const newUser: User = {
-      id: userId,
-      email: lowerEmail,
-      username: username.trim(),
-      avatar: `https://images.unsplash.com/photo-${1500000000000 + Math.floor(Math.random() * 9999999)}?auto=format&fit=crop&q=80&w=200`,
-      isVerified: false,
-      pwcBalance: 0,
-      pendingBalance: 0,
-      lockedBalance: 0,
-      lifetimeEarned: 0,
-      lifetimeWithdrawn: 0,
-      trustScore: 50, // Starts at neutral 50
-      xp: 0,
-      level: 1,
-      membershipTier: 'Dark Bronze',
-      referralCode: `PW_${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
-      referredBy,
-      onboardingCompleted: false,
-      welcomeCompleted: false,
-      emailVerified: false,
-      achievementsClaimed: [],
-      dailyRewardClaimedAt: null,
-      luckyWheelSpinsRemaining: 1, // First free spin
-      gamesPlayedToday: {},
-      kycStatus: 'unverified',
-      trustHistory: [
-        {
-          date: new Date().toISOString().split('T')[0],
-          change: 50,
-          reason: 'Initial security trust score provisioning',
-        },
-      ],
-      virtualAccount: null,
-    };
-
-    setAppState((prev) => {
-      const updatedUsers = { ...prev.users, [lowerEmail]: newUser };
-      const updatedLedger = { ...prev.ledger, [userId]: [] };
-      const updatedNotifications = {
-        ...prev.notifications,
-        [userId]: [
-          {
-            id: `n_reg_${Date.now()}`,
-            title: 'Welcome to PayWorth Ledger',
-            message: 'Your account was successfully registered. Please verify your email to access reward earning mechanics.',
-            category: 'system',
-            read: false,
-            date: new Date().toISOString(),
-          },
-        ],
-      };
-
-      // Apply referral credit to referrer if code was used
-      let nextState = {
-        ...prev,
-        users: updatedUsers,
-        ledger: updatedLedger,
-        notifications: updatedNotifications,
-        currentUser: newUser,
-      };
-
-      if (referredBy) {
-        // Referrer gets 50 PWC pending and updated trust
-        nextState = applyLedgerCredit(
-          nextState,
-          referredBy,
-          50,
-          `Referral reward for inviting ${username}`,
-          'referral'
+    try {
+      const lowerEmail = email.trim().toLowerCase();
+      
+      let referredBy: string | null = null;
+      if (referralCode) {
+        const referrer = (Object.values(appState.users) as User[]).find(
+          (u) => u.referralCode.toUpperCase() === referralCode.toUpperCase()
         );
-        // Add notification for referrer
-        const referrerNotif: Notification = {
-          id: `n_ref_${Date.now()}`,
-          title: '👥 New Active Referral',
-          message: `Your referral code was claimed by ${username}. 50 PWC has been credited to your wallet ledger.`,
-          category: 'reward',
-          read: false,
-          date: new Date().toISOString(),
-        };
-        nextState.notifications[referredBy] = [referrerNotif, ...(nextState.notifications[referredBy] || [])];
+        if (referrer) {
+          referredBy = referrer.id;
+        } else {
+          setError('Referral code not found. You can leave it blank to continue.');
+          setLoading(false);
+          return false;
+        }
       }
 
-      return nextState;
-    });
-
-    setSuccessMessage('Registration successful! Check your credentials.');
-    setLoading(false);
-    return true;
-  };
-
-  const loginWithGoogle = async (): Promise<boolean> => {
-    setLoading(true);
-    clearMessages();
-    await new Promise((r) => setTimeout(r, 800));
-    // Simulate standard Google authentication flow in preview sandbox
-    const email = 'google_user@payworth.com';
-    const user = appState.users[email];
-    if (user) {
-      setAppState((prev) => ({
-        ...prev,
-        currentUser: user,
-      }));
-      setSuccessMessage('Signed in via Google successfully.');
-      setLoading(false);
-      return true;
-    } else {
-      // Create fresh user
-      const userId = 'usr_google_992';
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const firebaseUser = userCredential.user;
+      
       const newUser: User = {
-        id: userId,
-        email,
-        username: 'Google Operative',
-        avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200',
-        isVerified: true,
-        pwcBalance: 100, // Google sign up bonus
+        id: firebaseUser.uid,
+        email: lowerEmail,
+        username: username.trim(),
+        avatar: `https://images.unsplash.com/photo-${1500000000000 + Math.floor(Math.random() * 9999999)}?auto=format&fit=crop&q=80&w=200`,
+        isVerified: false,
+        pwcBalance: 0,
         pendingBalance: 0,
         lockedBalance: 0,
-        lifetimeEarned: 100,
+        lifetimeEarned: 0,
         lifetimeWithdrawn: 0,
-        trustScore: 70, // Higher trust because Google accounts are pre-verified
-        xp: 10,
+        trustScore: 50,
+        xp: 0,
         level: 1,
         membershipTier: 'Dark Bronze',
-        referralCode: 'PW_GOOGLE',
-        referredBy: null,
+        referralCode: `PW_${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
+        referredBy,
         onboardingCompleted: false,
         welcomeCompleted: false,
-        emailVerified: true,
+        emailVerified: false,
         achievementsClaimed: [],
         dailyRewardClaimedAt: null,
-        luckyWheelSpinsRemaining: 2,
+        luckyWheelSpinsRemaining: 1,
         gamesPlayedToday: {},
         kycStatus: 'unverified',
         trustHistory: [
           {
             date: new Date().toISOString().split('T')[0],
-            change: 70,
-            reason: 'Google Verified Single Sign-On profile authentication',
+            change: 50,
+            reason: 'Initial security trust score provisioning',
           },
         ],
         virtualAccount: null,
+        walletNumber: `412${Math.floor(1000000 + Math.random() * 9000000)}`,
+        walletStatus: 'active',
+        walletPin: null,
+        dailyLimit: 5000,
+        monthlyLimit: 50000,
+        spendingLimit: 2000,
+        walletLevel: 1,
       };
 
-      setAppState((prev) => ({
-        ...prev,
-        users: { ...prev.users, [email]: newUser },
-        ledger: { ...prev.ledger, [userId]: [] },
-        notifications: {
+      const userDocRef = doc(db, 'users', firebaseUser.uid);
+      try {
+        await setDoc(userDocRef, newUser);
+      } catch (e) {
+        console.warn('Unable to write signup document to cloud store, operating locally.', e);
+      }
+
+      setAppState((prev) => {
+        const updatedUsers = { ...prev.users, [lowerEmail]: newUser };
+        const updatedLedger = { ...prev.ledger, [firebaseUser.uid]: [] };
+        const updatedNotifications = {
           ...prev.notifications,
-          [userId]: [
+          [firebaseUser.uid]: [
             {
-              id: `notif_google_${Date.now()}`,
-              title: 'Welcome via Google SSO',
-              message: 'Google Sign-In completed. Basic email verification bypassed. Complete your profile details.',
+              id: generateUniqueId('n_reg'),
+              title: 'Welcome to PayWorth Ledger',
+              message: 'Your account was successfully registered. Please verify your email to access reward earning mechanics.',
               category: 'system',
               read: false,
               date: new Date().toISOString(),
             },
           ],
-        },
-        currentUser: newUser,
-      }));
+        };
 
-      setSuccessMessage('Google SSO Authentication successful.');
+        let nextState = {
+          ...prev,
+          users: updatedUsers,
+          ledger: updatedLedger,
+          notifications: updatedNotifications,
+          currentUser: newUser,
+        };
+
+        if (referredBy) {
+          nextState = applyLedgerCredit(
+            nextState,
+            referredBy,
+            50,
+            `Referral reward for inviting ${username}`,
+            'referral'
+          );
+          const referrerNotif: Notification = {
+            id: generateUniqueId('n_ref'),
+            title: '👥 New Active Referral',
+            message: `Your referral code was claimed by ${username}. 50 PWC has been credited to your wallet ledger.`,
+            category: 'reward',
+            read: false,
+            date: new Date().toISOString(),
+          };
+          nextState.notifications[referredBy] = [referrerNotif, ...(nextState.notifications[referredBy] || [])];
+        }
+
+        return nextState;
+      });
+
+      setSuccessMessage('Registration successful! Check your credentials.');
       setLoading(false);
       return true;
+    } catch (err: any) {
+      console.error(err);
+      if (err.code === 'auth/network-request-failed' || err.message?.includes('network-request-failed') || err.message?.includes('offline')) {
+        const lowerEmail = email.trim().toLowerCase();
+        if (appState.users[lowerEmail]) {
+          setError('An account with this email address already exists.');
+          setLoading(false);
+          return false;
+        }
+
+        let referredBy: string | null = null;
+        if (referralCode) {
+          const referrer = (Object.values(appState.users) as User[]).find(
+            (u) => u.referralCode.toUpperCase() === referralCode.toUpperCase()
+          );
+          if (referrer) {
+            referredBy = referrer.id;
+          }
+        }
+
+        const localId = `usr_${Date.now()}`;
+        const newUser: User = {
+          id: localId,
+          email: lowerEmail,
+          username: username.trim(),
+          avatar: `https://images.unsplash.com/photo-${1500000000000 + Math.floor(Math.random() * 9999999)}?auto=format&fit=crop&q=80&w=200`,
+          isVerified: false,
+          pwcBalance: 0,
+          pendingBalance: 0,
+          lockedBalance: 0,
+          lifetimeEarned: 0,
+          lifetimeWithdrawn: 0,
+          trustScore: 50,
+          xp: 0,
+          level: 1,
+          membershipTier: 'Dark Bronze',
+          referralCode: `PW_${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
+          referredBy,
+          onboardingCompleted: false,
+          welcomeCompleted: false,
+          emailVerified: false,
+          achievementsClaimed: [],
+          dailyRewardClaimedAt: null,
+          luckyWheelSpinsRemaining: 1,
+          gamesPlayedToday: {},
+          kycStatus: 'unverified',
+          trustHistory: [
+            {
+              date: new Date().toISOString().split('T')[0],
+              change: 50,
+              reason: 'Initial security trust score provisioning',
+            },
+          ],
+          virtualAccount: null,
+          walletNumber: `412${Math.floor(1000000 + Math.random() * 9000000)}`,
+          walletStatus: 'active',
+          walletPin: null,
+          dailyLimit: 5000,
+          monthlyLimit: 50000,
+          spendingLimit: 2000,
+          walletLevel: 1,
+        };
+
+        setAppState((prev) => {
+          const updatedUsers = { ...prev.users, [lowerEmail]: newUser };
+          const updatedLedger = { ...prev.ledger, [localId]: [] };
+          const updatedNotifications = {
+            ...prev.notifications,
+            [localId]: [
+              {
+                id: generateUniqueId('n_reg'),
+                title: 'Welcome to PayWorth Ledger',
+                message: 'Your account was successfully registered. (Operating in secure local mode)',
+                category: 'system',
+                read: false,
+                date: new Date().toISOString(),
+              },
+            ],
+          };
+
+          let nextState = {
+            ...prev,
+            users: updatedUsers,
+            ledger: updatedLedger,
+            notifications: updatedNotifications,
+            currentUser: newUser,
+          };
+
+          if (referredBy) {
+            nextState = applyLedgerCredit(
+              nextState,
+              referredBy,
+              50,
+              `Referral reward for inviting ${username}`,
+              'referral'
+            );
+            const referrerNotif: Notification = {
+              id: generateUniqueId('n_ref'),
+              title: '👥 New Active Referral',
+              message: `Your referral code was claimed by ${username}. 50 PWC has been credited to your wallet ledger.`,
+              category: 'reward',
+              read: false,
+              date: new Date().toISOString(),
+            };
+            nextState.notifications[referredBy] = [referrerNotif, ...(nextState.notifications[referredBy] || [])];
+          }
+
+          return nextState;
+        });
+
+        setSuccessMessage('Registration successful! (Operating in secure local mode)');
+        setLoading(false);
+        return true;
+      }
+      setError(err.message || 'An error occurred during registration.');
+      setLoading(false);
+      return false;
     }
   };
 
-  const logout = () => {
-    setAppState((prev) => ({
-      ...prev,
-      currentUser: null,
-    }));
-    setActiveTab('home');
-    setActiveMenuScreen(null);
-    setSuccessMessage('Logged out safely. Have a premium day!');
+  const loginWithGoogle = async (): Promise<boolean> => {
+    setLoading(true);
+    clearMessages();
+    try {
+      const userCredential = await signInWithPopup(auth, googleAuthProvider);
+      const firebaseUser = userCredential.user;
+      
+      const userDocRef = doc(db, 'users', firebaseUser.uid);
+      const userDocSnap = await getDoc(userDocRef);
+      let user: User;
+      
+      if (userDocSnap.exists()) {
+        user = userDocSnap.data() as User;
+      } else {
+        user = {
+          id: firebaseUser.uid,
+          email: firebaseUser.email || '',
+          username: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Google Operative',
+          avatar: firebaseUser.photoURL || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200',
+          isVerified: true,
+          pwcBalance: 100, // Google sign up bonus
+          pendingBalance: 0,
+          lockedBalance: 0,
+          lifetimeEarned: 100,
+          lifetimeWithdrawn: 0,
+          trustScore: 70, // Higher trust because Google accounts are pre-verified
+          xp: 10,
+          level: 1,
+          membershipTier: 'Dark Bronze',
+          referralCode: `PW_${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
+          referredBy: null,
+          onboardingCompleted: false,
+          welcomeCompleted: false,
+          emailVerified: true,
+          achievementsClaimed: [],
+          dailyRewardClaimedAt: null,
+          luckyWheelSpinsRemaining: 2,
+          gamesPlayedToday: {},
+          kycStatus: 'unverified',
+          trustHistory: [
+            {
+              date: new Date().toISOString().split('T')[0],
+              change: 70,
+              reason: 'Google Verified Single Sign-On profile authentication',
+            },
+          ],
+          virtualAccount: null,
+          walletNumber: `412${Math.floor(1000000 + Math.random() * 9000000)}`,
+          walletStatus: 'active',
+          walletPin: null,
+          dailyLimit: 10000,
+          monthlyLimit: 100000,
+          spendingLimit: 4000,
+          walletLevel: 1,
+        };
+        try {
+          await setDoc(userDocRef, user);
+        } catch (e) {
+          console.warn('Unable to sync new Google user profile to firestore.', e);
+        }
+      }
+      
+      setAppState((prev) => ({
+        ...prev,
+        users: { ...prev.users, [user.email.toLowerCase()]: user },
+        currentUser: user,
+      }));
+      setSuccessMessage('Signed in via Google successfully.');
+      setLoading(false);
+      return true;
+    } catch (err: any) {
+      console.error(err);
+      if (err.code === 'auth/network-request-failed' || err.message?.includes('network-request-failed') || err.message?.includes('popup') || err.message?.includes('closed') || err.message?.includes('offline')) {
+        const email = 'google_user@payworth.com';
+        let user = appState.users[email];
+        if (!user) {
+          const userId = 'usr_google_992';
+          user = {
+            id: userId,
+            email,
+            username: 'Google Operative',
+            avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200',
+            isVerified: true,
+            pwcBalance: 100,
+            pendingBalance: 0,
+            lockedBalance: 0,
+            lifetimeEarned: 100,
+            lifetimeWithdrawn: 0,
+            trustScore: 70,
+            xp: 10,
+            level: 1,
+            membershipTier: 'Dark Bronze',
+            referralCode: 'PW_GOOGLE',
+            referredBy: null,
+            onboardingCompleted: false,
+            welcomeCompleted: false,
+            emailVerified: true,
+            achievementsClaimed: [],
+            dailyRewardClaimedAt: null,
+            luckyWheelSpinsRemaining: 2,
+            gamesPlayedToday: {},
+            kycStatus: 'unverified',
+            trustHistory: [
+              {
+                date: new Date().toISOString().split('T')[0],
+                change: 70,
+                reason: 'Google Verified Single Sign-On profile authentication',
+              },
+            ],
+            virtualAccount: null,
+            walletNumber: `412${Math.floor(1000000 + Math.random() * 9000000)}`,
+            walletStatus: 'active',
+            walletPin: null,
+            dailyLimit: 10000,
+            monthlyLimit: 100000,
+            spendingLimit: 4000,
+            walletLevel: 1,
+          };
+          setAppState((prev) => ({
+            ...prev,
+            users: { ...prev.users, [email]: user },
+            ledger: { ...prev.ledger, [userId]: [] },
+            notifications: {
+              ...prev.notifications,
+              [userId]: [
+                {
+                  id: generateUniqueId('notif_google'),
+                  title: 'Welcome via Google SSO',
+                  message: 'Google Sign-In completed. (Operating in secure local mode)',
+                  category: 'system',
+                  read: false,
+                  date: new Date().toISOString(),
+                }
+              ]
+            }
+          }));
+        }
+
+        setAppState((prev) => ({
+          ...prev,
+          currentUser: user,
+        }));
+        setSuccessMessage('Signed in via Google successfully (secure local mode).');
+        setLoading(false);
+        return true;
+      }
+      setError(err.message || 'An error occurred during Google Authentication.');
+      setLoading(false);
+      return false;
+    }
+  };
+
+  const logout = async () => {
+    try {
+      await signOut(auth);
+    } catch (err: any) {
+      console.warn('Firebase logout rejected; session cleared locally.', err);
+    } finally {
+      setAppState((prev) => ({
+        ...prev,
+        currentUser: null,
+      }));
+      setActiveTab('home');
+      setActiveMenuScreen(null);
+      setSuccessMessage('Logged out safely. Have a premium day!');
+    }
   };
 
   const forgotPassword = async (email: string) => {
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 600));
-    setSuccessMessage(`Password recovery credentials dispatched to: ${email}`);
-    setLoading(false);
+    try {
+      await sendPasswordResetEmail(auth, email);
+      setSuccessMessage(`Password recovery credentials dispatched to: ${email}`);
+    } catch (err: any) {
+      console.error(err);
+      if (err.code === 'auth/network-request-failed' || err.message?.includes('network-request-failed') || err.message?.includes('offline')) {
+        setSuccessMessage(`Password recovery credentials dispatched to: ${email} (secure local simulation)`);
+      } else {
+        setError(err.message || 'Error dispatching password reset email.');
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   const verifyEmail = async () => {
@@ -382,6 +760,457 @@ export function StateProvider({ children }: { children: React.ReactNode }) {
         currentUser: updatedUser,
       };
     });
+  };
+
+  const submitKyc = async (docReference: string): Promise<boolean> => {
+    if (!appState.currentUser) return false;
+    setLoading(true);
+    await new Promise((r) => setTimeout(r, 1200));
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    setAppState((prev) => {
+      if (!prev.currentUser) return prev;
+      const updatedUser: User = {
+        ...prev.currentUser,
+        kycStatus: 'verified',
+        trustScore: Math.min(100, prev.currentUser.trustScore + 25),
+        trustHistory: [
+          { date: todayStr, change: 25, reason: `KYC legal credentials clearance: ${docReference}` },
+          ...prev.currentUser.trustHistory,
+        ],
+        walletLevel: 2,
+        dailyLimit: 25000,
+        monthlyLimit: 250000,
+        spendingLimit: 15000,
+      };
+
+      return {
+        ...prev,
+        users: {
+          ...prev.users,
+          [prev.currentUser.email.toLowerCase()]: updatedUser,
+        },
+        currentUser: updatedUser,
+      };
+    });
+    setSuccessMessage('KYC credentials successfully validated. Wallet upgraded to Level 2 with enhanced limits!');
+    setLoading(false);
+    return true;
+  };
+
+  const setWalletPin = async (pin: string): Promise<boolean> => {
+    if (!appState.currentUser) return false;
+    setLoading(true);
+    await new Promise((r) => setTimeout(r, 600));
+    setAppState((prev) => {
+      if (!prev.currentUser) return prev;
+      const updatedUser: User = {
+        ...prev.currentUser,
+        walletPin: pin,
+      };
+      return {
+        ...prev,
+        users: {
+          ...prev.users,
+          [prev.currentUser.email.toLowerCase()]: updatedUser,
+        },
+        currentUser: updatedUser,
+      };
+    });
+    setSuccessMessage('Secure transaction PIN registered successfully.');
+    setLoading(false);
+    return true;
+  };
+
+  const updateWalletLimits = async (daily: number, monthly: number, spending: number): Promise<boolean> => {
+    if (!appState.currentUser) return false;
+    setLoading(true);
+    await new Promise((r) => setTimeout(r, 800));
+    setAppState((prev) => {
+      if (!prev.currentUser) return prev;
+      const updatedUser: User = {
+        ...prev.currentUser,
+        dailyLimit: daily,
+        monthlyLimit: monthly,
+        spendingLimit: spending,
+      };
+      return {
+        ...prev,
+        users: {
+          ...prev.users,
+          [prev.currentUser.email.toLowerCase()]: updatedUser,
+        },
+        currentUser: updatedUser,
+      };
+    });
+    setSuccessMessage('Wallet limits customized successfully.');
+    setLoading(false);
+    return true;
+  };
+
+  const updateWalletStatus = async (status: 'active' | 'locked' | 'frozen'): Promise<boolean> => {
+    if (!appState.currentUser) return false;
+    setLoading(true);
+    await new Promise((r) => setTimeout(r, 600));
+    setAppState((prev) => {
+      if (!prev.currentUser) return prev;
+      const updatedUser: User = {
+        ...prev.currentUser,
+        walletStatus: status,
+      };
+      return {
+        ...prev,
+        users: {
+          ...prev.users,
+          [prev.currentUser.email.toLowerCase()]: updatedUser,
+        },
+        currentUser: updatedUser,
+      };
+    });
+    setSuccessMessage(`Wallet status updated to ${status.toUpperCase()} successfully.`);
+    setLoading(false);
+    return true;
+  };
+
+  const fundWallet = async (amount: number, provider: string): Promise<boolean> => {
+    if (!appState.currentUser) return false;
+    setLoading(true);
+    await new Promise((r) => setTimeout(r, 1200));
+
+    setAppState((prev) => {
+      if (!prev.currentUser) return prev;
+      const userId = prev.currentUser.id;
+      const todayStr = new Date().toISOString();
+
+      // Main deposit transaction
+      let nextState = applyLedgerCredit(
+        prev,
+        userId,
+        amount,
+        `Wallet funded via ${provider}`,
+        'deposit'
+      );
+
+      // 1% Cashback bonus calculation
+      const cashbackAmount = Math.round(amount * 0.01);
+      if (cashbackAmount > 0) {
+        nextState = applyLedgerCredit(
+          nextState,
+          userId,
+          cashbackAmount,
+          `1% Promotional funding cashback bonus for using ${provider}`,
+          'cashback'
+        );
+      }
+
+      // Add notification
+      const fundNotif: Notification = {
+        id: generateUniqueId('notif_fund'),
+        title: '💰 Wallet Funded Successfully',
+        message: `Your wallet was funded with ${amount} PWC via ${provider}.${cashbackAmount > 0 ? ` You received ${cashbackAmount} PWC cashback!` : ''}`,
+        category: 'reward',
+        read: false,
+        date: todayStr,
+      };
+      
+      nextState.notifications[userId] = [fundNotif, ...(nextState.notifications[userId] || [])];
+      return nextState;
+    });
+
+    setSuccessMessage(`Wallet funded with ${amount} PWC successfully (1% Cashback applied!).`);
+    setLoading(false);
+    return true;
+  };
+
+  const payMerchant = async (merchantId: string, amount: number, description: string): Promise<boolean> => {
+    if (!appState.currentUser) return false;
+    if (appState.currentUser.walletStatus !== 'active') {
+      setError('Transaction blocked: Your virtual wallet is currently locked/frozen.');
+      return false;
+    }
+    if (amount > appState.currentUser.spendingLimit) {
+      setError(`Transaction blocked: This payment of ${amount} PWC exceeds your single transaction spending limit of ${appState.currentUser.spendingLimit} PWC.`);
+      return false;
+    }
+    if (appState.currentUser.pwcBalance < amount) {
+      setError('Transaction blocked: Insufficient wallet balance.');
+      return false;
+    }
+
+    setLoading(true);
+    await new Promise((r) => setTimeout(r, 1000));
+
+    let success = false;
+    setAppState((prev) => {
+      if (!prev.currentUser) return prev;
+      const userId = prev.currentUser.id;
+      const todayStr = new Date().toISOString();
+
+      // Debit the user's wallet
+      const debitResult = applyLedgerDebit(
+        prev,
+        userId,
+        amount,
+        `Merchant payment to ${merchantId} - ${description}`,
+        'merchant_payment'
+      );
+
+      if (!debitResult.success) return prev;
+
+      success = true;
+      let nextState = debitResult.state;
+
+      // 2% Loyalty Cashback bonus calculation
+      const cashbackAmount = Math.round(amount * 0.02);
+      if (cashbackAmount > 0) {
+        nextState = applyLedgerCredit(
+          nextState,
+          userId,
+          cashbackAmount,
+          `2% Loyalty cashback refund for purchase at ${merchantId}`,
+          'cashback'
+        );
+      }
+
+      // Add notification
+      const payNotif: Notification = {
+        id: generateUniqueId('notif_pay'),
+        title: '🛒 Merchant Payment Dispatched',
+        message: `Successfully paid ${amount} PWC to ${merchantId}.${cashbackAmount > 0 ? ` Earned ${cashbackAmount} PWC loyalty cashback!` : ''}`,
+        category: 'system',
+        read: false,
+        date: todayStr,
+      };
+
+      nextState.notifications[userId] = [payNotif, ...(nextState.notifications[userId] || [])];
+      return nextState;
+    });
+
+    setLoading(false);
+    if (success) {
+      setSuccessMessage(`Payment of ${amount} PWC to ${merchantId} settled (2% Cashback applied!).`);
+      return true;
+    } else {
+      setError('Transaction processing failed.');
+      return false;
+    }
+  };
+
+  const sendWalletTransfer = async (targetWalletNumber: string, amount: number, note?: string): Promise<boolean> => {
+    if (!appState.currentUser) return false;
+    if (appState.currentUser.walletStatus !== 'active') {
+      setError('Transaction blocked: Your virtual wallet is currently locked/frozen.');
+      return false;
+    }
+    if (amount > appState.currentUser.spendingLimit) {
+      setError(`Transaction blocked: This transfer of ${amount} PWC exceeds your single transaction spending limit of ${appState.currentUser.spendingLimit} PWC.`);
+      return false;
+    }
+    if (appState.currentUser.pwcBalance < amount) {
+      setError('Transaction blocked: Insufficient wallet balance.');
+      return false;
+    }
+
+    // Find recipient by 10-digit walletNumber
+    const recipient = Object.values(appState.users).find((u) => u.walletNumber === targetWalletNumber);
+    if (!recipient) {
+      setError(`Recipient validation failed: Wallet number "${targetWalletNumber}" was not found in PayWorth directories.`);
+      return false;
+    }
+
+    if (recipient.id === appState.currentUser.id) {
+      setError('Transaction blocked: Self-transfer transactions are prohibited.');
+      return false;
+    }
+
+    setLoading(true);
+    await new Promise((r) => setTimeout(r, 1200));
+
+    let success = false;
+    const refId = `pww_tx_ref_${Date.now()}`;
+
+    setAppState((prev) => {
+      if (!prev.currentUser) return prev;
+      const senderId = prev.currentUser.id;
+      const todayStr = new Date().toISOString();
+
+      // Debit sender
+      const debitResult = applyLedgerDebit(
+        prev,
+        senderId,
+        amount,
+        `PWW instant transfer sent to ${recipient.username} (${recipient.walletNumber})`,
+        'transfer_sent'
+      );
+
+      if (!debitResult.success) return prev;
+
+      success = true;
+      let nextState = debitResult.state;
+
+      // Credit recipient
+      nextState = applyLedgerCredit(
+        nextState,
+        recipient.id,
+        amount,
+        `PWW instant transfer received from ${prev.currentUser.username} (${prev.currentUser.walletNumber})`,
+        'transfer_received'
+      );
+
+      // Link references in the ledger entries
+      if (nextState.ledger[senderId] && nextState.ledger[senderId][0]) {
+        nextState.ledger[senderId][0].referenceId = refId;
+      }
+      if (nextState.ledger[recipient.id] && nextState.ledger[recipient.id][0]) {
+        nextState.ledger[recipient.id][0].referenceId = refId;
+      }
+
+      // Notification for recipient
+      const rxNotif: Notification = {
+        id: generateUniqueId('rx'),
+        title: '💸 PWW Transfer Received',
+        message: `You received ${amount} PWC from ${prev.currentUser.username}. Note: ${note || 'None'}.`,
+        category: 'reward',
+        read: false,
+        date: todayStr,
+      };
+      nextState.notifications[recipient.id] = [rxNotif, ...(nextState.notifications[recipient.id] || [])];
+
+      // Notification for sender
+      const txNotif: Notification = {
+        id: generateUniqueId('tx'),
+        title: '💸 PWW Transfer Settled',
+        message: `Successfully transferred ${amount} PWC to ${recipient.username} (Wallet: ${recipient.walletNumber}).`,
+        category: 'system',
+        read: false,
+        date: todayStr,
+      };
+      nextState.notifications[senderId] = [txNotif, ...(nextState.notifications[senderId] || [])];
+
+      return nextState;
+    });
+
+    setLoading(false);
+    if (success) {
+      setSuccessMessage(`Transferred ${amount} PWC to ${recipient.username} instantly (Ref: ${refId}).`);
+      return true;
+    } else {
+      setError('Transaction processing failed.');
+      return false;
+    }
+  };
+
+  const reverseTransaction = async (txId: string): Promise<boolean> => {
+    if (!appState.currentUser) return false;
+    setLoading(true);
+    await new Promise((r) => setTimeout(r, 1000));
+
+    let success = false;
+    setAppState((prev) => {
+      if (!prev.currentUser) return prev;
+
+      // Find the transaction inside current user's ledger
+      const userLedger = prev.ledger[prev.currentUser.id] || [];
+      const tx = userLedger.find((entry) => entry.id === txId || entry.referenceId === txId);
+
+      if (!tx) {
+        return prev;
+      }
+
+      if (tx.status === 'reversed') {
+        return prev; // already reversed
+      }
+
+      // Mark the original transaction as reversed
+      const updatedLedger = userLedger.map((entry) => {
+        if (entry.id === tx.id) {
+          return { ...entry, status: 'reversed' as const };
+        }
+        return entry;
+      });
+
+      let nextState = {
+        ...prev,
+        ledger: {
+          ...prev.ledger,
+          [prev.currentUser.id]: updatedLedger,
+        },
+      };
+
+      const amount = tx.amount;
+      const todayStr = new Date().toISOString();
+
+      if (tx.type === 'debit') {
+        // If it was a debit, we refund the user!
+        const refundedUser = {
+          ...prev.currentUser,
+          pwcBalance: prev.currentUser.pwcBalance + amount,
+        };
+        nextState.users[prev.currentUser.email.toLowerCase()] = refundedUser;
+        nextState.currentUser = refundedUser;
+
+        const refundEntry: LedgerEntry = {
+          id: `tx_rev_refund_${Date.now()}`,
+          timestamp: todayStr,
+          type: 'credit',
+          amount,
+          balanceAfter: refundedUser.pwcBalance,
+          description: `Reversal Re-credit: [Original ID: ${tx.id}]`,
+          category: 'transfer_reversal',
+          status: 'completed',
+          referenceId: tx.id,
+        };
+        nextState.ledger[prev.currentUser.id] = [refundEntry, ...updatedLedger];
+        success = true;
+      } else {
+        // If it was a credit, we debit the user!
+        if (prev.currentUser.pwcBalance < amount) {
+          return prev; // cannot reverse if user doesn't have enough balance
+        }
+        const debitedUser = {
+          ...prev.currentUser,
+          pwcBalance: prev.currentUser.pwcBalance - amount,
+        };
+        nextState.users[prev.currentUser.email.toLowerCase()] = debitedUser;
+        nextState.currentUser = debitedUser;
+
+        const debitEntry: LedgerEntry = {
+          id: `tx_rev_debit_${Date.now()}`,
+          timestamp: todayStr,
+          type: 'debit',
+          amount,
+          balanceAfter: debitedUser.pwcBalance,
+          description: `Reversal Re-debit: [Original ID: ${tx.id}]`,
+          category: 'transfer_reversal',
+          status: 'completed',
+          referenceId: tx.id,
+        };
+        nextState.ledger[prev.currentUser.id] = [debitEntry, ...updatedLedger];
+        success = true;
+      }
+
+      // Notification
+      const revNotif: Notification = {
+        id: generateUniqueId('notif_rev'),
+        title: '⚠️ Transaction Reversed',
+        message: `Transaction [ID: ${tx.id}] has been reversed. Corresponding balance adjustments were written to your ledger.`,
+        category: 'system',
+        read: false,
+        date: todayStr,
+      };
+      nextState.notifications[prev.currentUser.id] = [revNotif, ...(nextState.notifications[prev.currentUser.id] || [])];
+
+      return nextState;
+    });
+
+    setLoading(false);
+    if (success) {
+      setSuccessMessage('Transaction reversed successfully.');
+      return true;
+    } else {
+      setError('Unable to reverse transaction. Verify ledger integrity and balance state.');
+      return false;
+    }
   };
 
   // Rewards Engine
@@ -463,18 +1292,27 @@ export function StateProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     await new Promise((r) => setTimeout(r, 1200)); // Suspenseful spin delay
 
-    const prizes = [
-      { prize: '10 PWC Ledger credit', amount: 10, type: 'pwc' },
-      { prize: '25 PWC Ledger credit', amount: 25, type: 'pwc' },
-      { prize: '100 PWC Mega credit', amount: 100, type: 'pwc' },
-      { prize: '50 XP Booster', amount: 50, type: 'xp' },
-      { prize: '150 XP Super Booster', amount: 150, type: 'xp' },
-      { prize: 'Trust Score +5 Health', amount: 5, type: 'trust' },
-      { prize: 'Mystery Achievement Box', amount: 0, type: 'mystery' },
+    const weightedPrizes = [
+      { prize: '50 PWC Ledger credit', amount: 50, type: 'pwc', weight: 35 },
+      { prize: '10 PWC Ledger credit', amount: 10, type: 'pwc', weight: 25 },
+      { prize: '100 PWC Ledger credit', amount: 100, type: 'pwc', weight: 15 },
+      { prize: '50 XP Booster', amount: 50, type: 'xp', weight: 12 },
+      { prize: 'Trust Score +3 Health', amount: 3, type: 'trust', weight: 10 },
+      { prize: '1,000 PWC Mega Jackpot', amount: 1000, type: 'pwc', weight: 2 },
+      { prize: '10,000 PWC Ultimate Grand Jackpot', amount: 10000, type: 'pwc', weight: 1 },
     ];
 
-    const randomIndex = Math.floor(Math.random() * prizes.length);
-    const result = prizes[randomIndex];
+    const randomVal = Math.random() * 100;
+    let cumulativeWeight = 0;
+    let result = weightedPrizes[0];
+
+    for (const item of weightedPrizes) {
+      cumulativeWeight += item.weight;
+      if (randomVal <= cumulativeWeight) {
+        result = item;
+        break;
+      }
+    }
 
     setAppState((prev) => {
       if (!prev.currentUser) return prev;
@@ -544,7 +1382,7 @@ export function StateProvider({ children }: { children: React.ReactNode }) {
 
       // Notify
       const wheelNotif: Notification = {
-        id: `notif_wheel_${Date.now()}`,
+        id: generateUniqueId('notif_wheel'),
         title: '🎡 Lucky Wheel Outcome',
         message: `You spun the wheel and received: ${result.prize}!`,
         category: 'reward',
@@ -642,7 +1480,7 @@ export function StateProvider({ children }: { children: React.ReactNode }) {
 
         // Add notification
         const taskNotif: Notification = {
-          id: `n_t_app_${Date.now()}`,
+          id: generateUniqueId('n_t_app'),
           title: '✅ Task Auto-Approved',
           message: `Your task completion evidence was verified instantly. ${finalReward} PWC credited.`,
           category: 'task',
@@ -653,7 +1491,7 @@ export function StateProvider({ children }: { children: React.ReactNode }) {
       } else {
         // Send notification about pending status
         const pendingNotif: Notification = {
-          id: `n_t_pend_${Date.now()}`,
+          id: generateUniqueId('n_t_pend'),
           title: '📋 Task Submitted for Review',
           message: `Evidence for "${task.title}" uploaded. Our moderation team will verify it within 24h.`,
           category: 'task',
@@ -717,7 +1555,7 @@ export function StateProvider({ children }: { children: React.ReactNode }) {
 
       // Add system notification for admin review
       const campNotif: Notification = {
-        id: `n_camp_${Date.now()}`,
+        id: generateUniqueId('n_camp'),
         title: '🛒 Campaign Created (Locked Escrow)',
         message: `Your campaign "${data.title}" is in queue. ${requiredEscrow} PWC has been safely escrowed.`,
         category: 'marketplace',
@@ -792,7 +1630,7 @@ export function StateProvider({ children }: { children: React.ReactNode }) {
 
       // Send worker a notification
       const workerNotif: Notification = {
-        id: `notif_w_${Date.now()}`,
+        id: generateUniqueId('notif_w'),
         title: '📋 Campaign Proof Uploaded',
         message: `Your proof of work for "${campaign.title}" was submitted to the creator.`,
         category: 'marketplace',
@@ -861,7 +1699,7 @@ export function StateProvider({ children }: { children: React.ReactNode }) {
 
         // Send worker notification
         const successNotif: Notification = {
-          id: `notif_app_camp_${Date.now()}`,
+          id: generateUniqueId('notif_app_camp'),
           title: '💰 Campaign Work Approved!',
           message: `Your contribution to "${campaign.title}" was verified. ${finalReward} PWC credited.`,
           category: 'marketplace',
@@ -883,7 +1721,7 @@ export function StateProvider({ children }: { children: React.ReactNode }) {
 
         // Notification of rejection
         const rejectNotif: Notification = {
-          id: `notif_rej_camp_${Date.now()}`,
+          id: generateUniqueId('notif_rej_camp'),
           title: '❌ Campaign Submission Rejected',
           message: `Your proof for "${campaign.title}" was rejected. Feedback: ${reviewNote || 'None'}. Trust score impacted.`,
           category: 'marketplace',
@@ -941,7 +1779,7 @@ export function StateProvider({ children }: { children: React.ReactNode }) {
 
       // Notification
       const depNotif: Notification = {
-        id: `notif_dep_${Date.now()}`,
+        id: generateUniqueId('notif_dep'),
         title: '🏦 Deposit Settled',
         message: `Your secure virtual account transfer of ${amount} PWC was successfully deposited.`,
         category: 'reward',
@@ -1019,7 +1857,7 @@ export function StateProvider({ children }: { children: React.ReactNode }) {
       nextState.withdrawals = [newRequest, ...nextState.withdrawals];
 
       const wNotif: Notification = {
-        id: `notif_w_req_${Date.now()}`,
+        id: generateUniqueId('notif_w_req'),
         title: '👛 Withdrawal Request Locked',
         message: `Your settlement of ${receiveAmount} PWC (after ${fee} PWC fee) has been sent to queue.`,
         category: 'withdrawal',
@@ -1089,7 +1927,7 @@ export function StateProvider({ children }: { children: React.ReactNode }) {
 
       // Notification for recipient
       const rxNotif: Notification = {
-        id: `rx_${Date.now()}`,
+        id: generateUniqueId('rx'),
         title: '💸 Transfer Received',
         message: `You received ${amount} PWC from ${prev.currentUser.username}. Note: ${note || 'None'}.`,
         category: 'reward',
@@ -1100,7 +1938,7 @@ export function StateProvider({ children }: { children: React.ReactNode }) {
 
       // Notification for sender
       const txNotif: Notification = {
-        id: `tx_${Date.now()}`,
+        id: generateUniqueId('tx'),
         title: '💸 Transfer Transmitted',
         message: `Sent ${amount} PWC to ${recipient.username} successfully.`,
         category: 'system',
@@ -1169,7 +2007,7 @@ export function StateProvider({ children }: { children: React.ReactNode }) {
 
       // Notify
       const mbNotif: Notification = {
-        id: `notif_mb_${Date.now()}`,
+        id: generateUniqueId('notif_mb'),
         title: '🌟 Membership Tier Elevated',
         message: `Welcome to ${tierName}! Enjoy your new ${tier.multiplier}x multiplier and unique perks.`,
         category: 'membership',
@@ -1236,7 +2074,7 @@ export function StateProvider({ children }: { children: React.ReactNode }) {
 
       // Notification
       const achNotif: Notification = {
-        id: `notif_ach_${Date.now()}`,
+        id: generateUniqueId('notif_ach'),
         title: '🏆 Achievement Unlocked!',
         message: `Unlocked "${ach.title}"! Claimed ${ach.rewardPWC} PWC, +${ach.rewardXP} XP, and +5 Trust.`,
         category: 'membership',
@@ -1315,7 +2153,7 @@ export function StateProvider({ children }: { children: React.ReactNode }) {
 
       // Send game stats notification
       const gameNotif: Notification = {
-        id: `notif_game_${Date.now()}`,
+        id: generateUniqueId('notif_game'),
         title: '🎮 Mini-Game Payout Saved',
         message: `Scored ${score} in ${gameId}. Earned ${earnedReward} PWC and +${finalXp} XP.`,
         category: 'reward',
@@ -1513,7 +2351,7 @@ export function StateProvider({ children }: { children: React.ReactNode }) {
 
         // Notify
         const grantNotif: Notification = {
-          id: `notif_fnd_ok_${Date.now()}`,
+          id: generateUniqueId('notif_fnd_ok'),
           title: '🎉 Funding Application Approved!',
           message: `Your grant of ${request.amount} PWC was approved. Auditor feedback: ${feedback || 'Approved'}.`,
           category: 'reward',
@@ -1524,7 +2362,7 @@ export function StateProvider({ children }: { children: React.ReactNode }) {
       } else {
         // Notify rejection
         const grantNotif: Notification = {
-          id: `notif_fnd_no_${Date.now()}`,
+          id: generateUniqueId('notif_fnd_no'),
           title: '❌ Funding Application Rejected',
           message: `Your grant was rejected. Auditor feedback: ${feedback || 'None'}.`,
           category: 'system',
@@ -1590,7 +2428,7 @@ export function StateProvider({ children }: { children: React.ReactNode }) {
 
         // Notify
         const creatorNotif: Notification = {
-          id: `notif_camp_fail_${Date.now()}`,
+          id: generateUniqueId('notif_camp_fail'),
           title: '❌ Campaign Rejected & Refunded',
           message: `Your campaign "${campaign.title}" was rejected by auditors. Your escrow of ${requiredRefund} PWC was fully refunded.`,
           category: 'marketplace',
@@ -1601,7 +2439,7 @@ export function StateProvider({ children }: { children: React.ReactNode }) {
       } else {
         // Notify approval
         const creatorNotif: Notification = {
-          id: `notif_camp_ok_${Date.now()}`,
+          id: generateUniqueId('notif_camp_ok'),
           title: '🛒 Campaign Live on Marketplace',
           message: `Your campaign "${campaign.title}" has been verified and is now live for all workers!`,
           category: 'marketplace',
@@ -1670,7 +2508,7 @@ export function StateProvider({ children }: { children: React.ReactNode }) {
 
         // Notify
         const notif: Notification = {
-          id: `notif_task_ok_${Date.now()}`,
+          id: generateUniqueId('notif_task_ok'),
           title: '✅ Task Evidence Approved',
           message: `Your proof for "${task.title}" was verified. Earned ${finalReward} PWC and trust upgraded.`,
           category: 'task',
@@ -1691,7 +2529,7 @@ export function StateProvider({ children }: { children: React.ReactNode }) {
 
         // Notify rejection
         const notif: Notification = {
-          id: `notif_task_no_${Date.now()}`,
+          id: generateUniqueId('notif_task_no'),
           title: '❌ Task Evidence Rejected',
           message: `Your proof for "${task.title}" was rejected. Feedback: ${feedback || 'Insufficient proof'}. Trust penalized.`,
           category: 'task',
@@ -1748,6 +2586,14 @@ export function StateProvider({ children }: { children: React.ReactNode }) {
         markNotificationRead,
         playGameAndSubmitScore,
         submitFundingRequest,
+        submitKyc,
+        setWalletPin,
+        updateWalletLimits,
+        updateWalletStatus,
+        fundWallet,
+        payMerchant,
+        sendWalletTransfer,
+        reverseTransaction,
         adminApproveWithdrawal,
         adminApproveFunding,
         adminApproveCampaign,

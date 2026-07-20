@@ -1,0 +1,216 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Represents a PayWorth communication and ledger user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string" },
+        "username": { "type": "string" },
+        "avatar": { "type": "string" },
+        "isVerified": { "type": "boolean" },
+        "pwcBalance": { "type": "number" },
+        "pendingBalance": { "type": "number" },
+        "lockedBalance": { "type": "number" },
+        "lifetimeEarned": { "type": "number" },
+        "lifetimeWithdrawn": { "type": "number" },
+        "trustScore": { "type": "number" },
+        "xp": { "type": "number" },
+        "level": { "type": "number" },
+        "membershipTier": { "type": "string" },
+        "referralCode": { "type": "string" },
+        "referredBy": { "type": "string" },
+        "onboardingCompleted": { "type": "boolean" },
+        "welcomeCompleted": { "type": "boolean" },
+        "emailVerified": { "type": "boolean" },
+        "achievementsClaimed": { "type": "array" },
+        "dailyRewardClaimedAt": { "type": "string" },
+        "luckyWheelSpinsRemaining": { "type": "number" },
+        "gamesPlayedToday": { "type": "object" },
+        "kycStatus": { "type": "string" },
+        "trustHistory": { "type": "array" },
+        "virtualAccount": { "type": "object" }
+      },
+      "required": ["id", "email", "username"]
+    },
+    "LedgerEntry": {
+      "title": "LedgerEntry",
+      "description": "Represents an individual credit or debit ledger entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "type": { "type": "string", "enum": ["credit", "debit"] },
+        "amount": { "type": "number" },
+        "balanceAfter": { "type": "number" },
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "status": { "type": "string", "enum": ["completed", "pending", "failed"] }
+      },
+      "required": ["id", "timestamp", "type", "amount", "balanceAfter", "description", "category", "status"]
+    },
+    "Task": {
+      "title": "Task",
+      "description": "Represents a crowdsourced task",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "reward": { "type": "number" },
+        "difficulty": { "type": "string" },
+        "estTime": { "type": "string" },
+        "slots": { "type": "number" },
+        "remainingSlots": { "type": "number" },
+        "trustRequirement": { "type": "number" },
+        "link": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "title", "description", "category", "reward", "slots", "remainingSlots"]
+    },
+    "TaskSubmission": {
+      "title": "TaskSubmission",
+      "description": "Represents a user submission of proof for a task",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "taskId": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "evidence": { "type": "string" },
+        "submittedAt": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "feedback": { "type": "string" }
+      },
+      "required": ["id", "taskId", "userId", "userName", "evidence", "submittedAt", "status"]
+    },
+    "Campaign": {
+      "title": "Campaign",
+      "description": "Represents a sponsor/creator campaign",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "reward": { "type": "number" },
+        "slots": { "type": "number" },
+        "remainingSlots": { "type": "number" },
+        "rewardPool": { "type": "number" },
+        "creatorId": { "type": "string" },
+        "creatorName": { "type": "string" },
+        "trustRating": { "type": "number" },
+        "deadline": { "type": "string" },
+        "status": { "type": "string" },
+        "approvalMethod": { "type": "string" }
+      },
+      "required": ["id", "title", "description", "category", "reward", "slots", "remainingSlots", "rewardPool", "creatorId"]
+    },
+    "CampaignSubmission": {
+      "title": "CampaignSubmission",
+      "description": "Represents user submission for creator campaign",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "campaignId": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "evidenceUrl": { "type": "string" },
+        "textEvidence": { "type": "string" },
+        "submittedAt": { "type": "string" },
+        "status": { "type": "string" },
+        "reviewNote": { "type": "string" }
+      },
+      "required": ["id", "campaignId", "userId", "userName", "textEvidence", "submittedAt", "status"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "In-app notifications",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "category": { "type": "string" },
+        "read": { "type": "boolean" },
+        "date": { "type": "string" }
+      },
+      "required": ["id", "title", "message", "category", "read", "date"]
+    },
+    "WithdrawalRequest": {
+      "title": "WithdrawalRequest",
+      "description": "Withdrawal logs",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "amount": { "type": "number" },
+        "bankName": { "type": "string" },
+        "accountNumber": { "type": "string" },
+        "fee": { "type": "number" },
+        "receiveAmount": { "type": "number" },
+        "settlementDate": { "type": "string" },
+        "status": { "type": "string" },
+        "requestedAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "userName", "amount", "bankName", "accountNumber", "fee", "receiveAmount", "status", "requestedAt"]
+    },
+    "FundingRequest": {
+      "title": "FundingRequest",
+      "description": "Funding requests",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "amount": { "type": "number" },
+        "reason": { "type": "string" },
+        "status": { "type": "string" },
+        "submittedAt": { "type": "string" },
+        "feedback": { "type": "string" }
+      },
+      "required": ["id", "userId", "userName", "amount", "reason", "status", "submittedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles and ledger stats"
+    },
+    "/users/{userId}/ledger/{ledgerId}": {
+      "schema": "LedgerEntry",
+      "description": "User specific ledger entries"
+    },
+    "/users/{userId}/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "User specific notification records"
+    },
+    "/tasks/{taskId}": {
+      "schema": "Task",
+      "description": "Tasks registry"
+    },
+    "/taskSubmissions/{submissionId}": {
+      "schema": "TaskSubmission",
+      "description": "User task verification submissions"
+    },
+    "/campaigns/{campaignId}": {
+      "schema": "Campaign",
+      "description": "Sponsor or business campaigns"
+    },
+    "/campaignSubmissions/{submissionId}": {
+      "schema": "CampaignSubmission",
+      "description": "User campaign submissions"
+    },
+    "/withdrawals/{withdrawalId}": {
+      "schema": "WithdrawalRequest",
+      "description": "Fiat settlement requests"
+    },
+    "/fundingRequests/{requestId}": {
+      "schema": "FundingRequest",
+      "description": "Sponsor funding requests"
+    }
+  }
+}

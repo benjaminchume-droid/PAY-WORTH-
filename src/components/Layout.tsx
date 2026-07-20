@@ -51,6 +51,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const menuItems = [
     { id: 'dashboard', label: 'Admin Panel', icon: Sliders, requiresAdmin: true },
     { id: 'membership', label: 'Membership Tiers', icon: Sparkles },
+    { id: 'create_campaign', label: 'Start Campaign', icon: BadgeDollarSign },
     { id: 'leaderboard', label: 'Leaderboards', icon: Trophy },
     { id: 'wheel', label: 'Lucky Wheel', icon: Coins },
     { id: 'games', label: 'Mini Games', icon: Gamepad2 },

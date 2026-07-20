@@ -4,6 +4,7 @@ import { usePayWorth } from '../engines/StateContext';
 import { MEMBERSHIP_TIERS_DATA, DEFAULT_ACHIEVEMENTS } from '../engines/storage';
 import { User, MembershipTier } from '../types';
 import MiniGames from './MiniGames';
+import CreateCampaignView from './CreateCampaignView';
 import {
   Sparkles,
   Award,
@@ -36,16 +37,19 @@ export default function MenuView() {
   return (
     <div className="p-4 max-w-lg mx-auto pb-24 space-y-4">
       {/* Return header */}
-      <div className="flex items-center gap-2 mb-4">
-        <button
-          onClick={() => setActiveMenuScreen(null)}
-          className="text-xs text-slate-400 hover:text-white bg-white/5 border border-white/5 hover:bg-white/10 px-3 py-1.5 rounded-xl transition-all"
-        >
-          ← Return to Dashboard
-        </button>
-        <span className="text-xs text-slate-600 font-mono">/ {activeMenuScreen.toUpperCase()}</span>
-      </div>
+      {activeMenuScreen !== 'create_campaign' && (
+        <div className="flex items-center gap-2 mb-4">
+          <button
+            onClick={() => setActiveMenuScreen(null)}
+            className="text-xs text-slate-400 hover:text-white bg-white/5 border border-white/5 hover:bg-white/10 px-3 py-1.5 rounded-xl transition-all"
+          >
+            ← Return to Dashboard
+          </button>
+          <span className="text-xs text-slate-600 font-mono">/ {activeMenuScreen.toUpperCase()}</span>
+        </div>
+      )}
 
+      {activeMenuScreen === 'create_campaign' && <CreateCampaignView />}
       {activeMenuScreen === 'membership' && <MembershipView />}
       {activeMenuScreen === 'leaderboard' && <LeaderboardView />}
       {activeMenuScreen === 'wheel' && <LuckyWheelView />}
@@ -70,18 +74,54 @@ export default function MenuView() {
    MEMBERSHIP VIEW
    ========================================================================== */
 function MembershipView() {
-  const { currentUser, upgradeMembership, error, successMessage, clearMessages } = usePayWorth();
-  const [upgrading, setUpgrading] = useState<string | null>(null);
+  const {
+    currentUser,
+    upgradeMembership,
+    error,
+    successMessage,
+    clearMessages,
+    setActiveTab,
+    setActiveMenuScreen
+  } = usePayWorth();
 
-  const handleUpgrade = async (tierName: MembershipTier) => {
-    setUpgrading(tierName);
+  const [confirmTier, setConfirmTier] = useState<any | null>(null);
+  const [insufficientTier, setInsufficientTier] = useState<any | null>(null);
+  const [processing, setProcessing] = useState(false);
+  const [upgradeSuccess, setUpgradeSuccess] = useState<string | null>(null);
+
+  const handleUpgradeClick = (tier: any) => {
     clearMessages();
-    await upgradeMembership(tierName);
-    setUpgrading(null);
+    const balance = currentUser?.pwcBalance || 0;
+    if (balance < tier.cost) {
+      setInsufficientTier(tier);
+    } else {
+      setConfirmTier(tier);
+    }
+  };
+
+  const handleProcessUpgrade = async () => {
+    if (!confirmTier) return;
+    setProcessing(true);
+    clearMessages();
+    
+    try {
+      const res = await upgradeMembership(confirmTier.name);
+      if (res && res.success) {
+        setUpgradeSuccess(confirmTier.name);
+        setConfirmTier(null);
+        setTimeout(() => {
+          setUpgradeSuccess(null);
+        }, 4000);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setProcessing(false);
+    }
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 relative">
       <div className="mb-2">
         <h3 className="text-xl font-bold text-white flex items-center gap-2">
           <Sparkles className="text-amber-400 w-5.5 h-5.5" /> Premium Tiers
@@ -102,6 +142,27 @@ function MembershipView() {
         </div>
       )}
 
+      {/* SUCCESS ANIMATION FLASHCARD */}
+      <AnimatePresence>
+        {upgradeSuccess && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            className="p-5 bg-gradient-to-tr from-emerald-500/20 to-teal-500/20 border border-emerald-500/40 rounded-2xl text-center space-y-3 shadow-2xl relative overflow-hidden"
+          >
+            <div className="absolute inset-0 bg-emerald-500/5 animate-pulse pointer-events-none" />
+            <div className="w-16 h-16 bg-emerald-500 text-slate-950 rounded-full flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/20">
+              <Sparkles className="w-8 h-8 animate-spin" />
+            </div>
+            <h4 className="text-lg font-bold text-white">Membership Upgraded!</h4>
+            <p className="text-xs text-slate-300 max-w-xs mx-auto">
+              Your account has been upgraded to <strong className="text-emerald-400">{upgradeSuccess}</strong>! Benefits and multipliers are applied to your secure profile ledger immediately.
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="space-y-4">
         {MEMBERSHIP_TIERS_DATA.map((tier) => {
           const isCurrent = currentUser?.membershipTier === tier.name;
@@ -115,7 +176,7 @@ function MembershipView() {
               className={`rounded-2xl p-4 border relative overflow-hidden transition-all ${
                 isCurrent
                   ? 'bg-gradient-to-br from-emerald-500/10 to-teal-500/10 border-emerald-500/30 shadow-lg'
-                  : 'bg-white/5 border-white/10'
+                  : 'bg-white/5 border-white/10 hover:border-white/15'
               }`}
             >
               {isCurrent && (
@@ -135,7 +196,7 @@ function MembershipView() {
                 </div>
                 <div className="text-right">
                   <span className="text-xs font-mono text-slate-300 block">Upgrades cost:</span>
-                  <span className="text-sm font-extrabold text-white font-mono">{tier.cost} PWC</span>
+                  <span className="text-sm font-extrabold text-white font-mono">{tier.cost.toLocaleString()} PWC</span>
                 </div>
               </div>
 
@@ -164,21 +225,142 @@ function MembershipView() {
               {/* Buy actions */}
               {!isCurrent && (
                 <button
-                  onClick={() => handleUpgrade(tier.name)}
-                  disabled={!canUpgrade || upgrading !== null}
+                  onClick={() => handleUpgradeClick(tier)}
+                  disabled={!canUpgrade}
                   className={`mt-4 w-full py-2.5 rounded-xl text-xs font-bold transition-all shadow-md ${
                     canUpgrade
-                      ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 active:scale-95'
+                      ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 active:scale-95 cursor-pointer'
                       : 'bg-white/5 text-slate-500 border border-white/5 cursor-not-allowed'
                   }`}
                 >
-                  {upgrading === tier.name ? 'Authorizing ledger debits...' : `Upgrade to ${tier.name}`}
+                  Upgrade to {tier.name}
                 </button>
               )}
             </div>
           );
         })}
       </div>
+
+      {/* CONFIRMATION UPGRADE MODAL */}
+      <AnimatePresence>
+        {confirmTier && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-slate-900 border border-white/10 rounded-3xl p-6 max-w-sm w-full relative overflow-hidden shadow-2xl space-y-4"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-emerald-500/10 text-emerald-400 rounded-xl flex items-center justify-center shrink-0">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white">Confirm Membership Upgrade</h4>
+                  <p className="text-[10px] text-slate-400 font-mono">Deducting from security ledger</p>
+                </div>
+              </div>
+
+              <div className="bg-black/35 border border-white/5 p-4 rounded-2xl space-y-2 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Target Level:</span>
+                  <span className="text-white font-bold">{confirmTier.name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Debit Cost:</span>
+                  <span className="text-emerald-400 font-mono font-bold">-{confirmTier.cost.toLocaleString()} PWC</span>
+                </div>
+                <div className="flex justify-between border-t border-white/5 pt-2">
+                  <span className="text-slate-400">Earning Multiplier:</span>
+                  <span className="text-amber-400 font-bold">{confirmTier.multiplier}x</span>
+                </div>
+              </div>
+
+              <div className="flex gap-2.5 pt-2">
+                <button
+                  onClick={() => setConfirmTier(null)}
+                  disabled={processing}
+                  className="flex-1 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/5 text-xs font-bold py-3 rounded-xl transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleProcessUpgrade}
+                  disabled={processing}
+                  className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg"
+                >
+                  {processing ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                      Deducting...
+                    </>
+                  ) : (
+                    'Authorize Upgrade'
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* INSUFFICIENT PWC MODAL */}
+      <AnimatePresence>
+        {insufficientTier && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-slate-900 border border-white/10 rounded-3xl p-6 max-w-sm w-full relative overflow-hidden shadow-2xl space-y-4"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-red-500/10 text-red-400 rounded-xl flex items-center justify-center shrink-0 animate-bounce">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white">Insufficient PWC</h4>
+                  <p className="text-[10px] text-red-400 font-mono">Platform ledger block</p>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-300 leading-normal">
+                You don't have enough PayWorth Coins to purchase this membership. Deposit PWC via virtual account wire transfer to lock upgrade ranks.
+              </p>
+
+              <div className="bg-black/35 border border-white/5 p-4 rounded-2xl space-y-2 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Required:</span>
+                  <span className="text-white font-mono font-bold">{insufficientTier.cost.toLocaleString()} PWC</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Current Balance:</span>
+                  <span className="text-red-400 font-mono font-bold">{(currentUser?.pwcBalance || 0).toLocaleString()} PWC</span>
+                </div>
+              </div>
+
+              <div className="flex gap-2.5 pt-2">
+                <button
+                  onClick={() => setInsufficientTier(null)}
+                  className="flex-1 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/5 text-xs font-bold py-3 rounded-xl transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    setInsufficientTier(null);
+                    setActiveTab('wallet');
+                    setActiveMenuScreen(null);
+                  }}
+                  className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold py-3 rounded-xl transition-all shadow-lg text-center"
+                >
+                  Buy PWC
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -257,16 +439,18 @@ function LuckyWheelView() {
   const { currentUser, spinLuckyWheel, error, successMessage, clearMessages } = usePayWorth();
   const [spinning, setSpinning] = useState(false);
   const [spinResult, setSpinResult] = useState<{ prize: string; type: string } | null>(null);
+  const [spinError, setSpinError] = useState<string | null>(null);
 
   const handleSpin = async () => {
     setSpinning(true);
     setSpinResult(null);
+    setSpinError(null);
     clearMessages();
     try {
       const res = await spinLuckyWheel();
       setSpinResult({ prize: res.prize, type: res.type });
     } catch (err: any) {
-      alert(err.message || 'Spin failed.');
+      setSpinError(err.message || 'Spin failed.');
     }
     setSpinning(false);
   };
@@ -281,6 +465,12 @@ function LuckyWheelView() {
           Spin our daily automated fortune wheel. Remaining free spins: <strong className="text-white">{currentUser?.luckyWheelSpinsRemaining || 0}</strong>. Subsequent spins cost 50 PWC.
         </p>
       </div>
+
+      {spinError && (
+        <div className="p-3 bg-red-500/10 border border-red-500/25 text-red-400 text-xs rounded-xl text-left font-mono">
+          ⚠️ {spinError}
+        </div>
+      )}
 
       <div className="py-6 relative flex flex-col items-center">
         {/* Animated Spin Wheel representation using Framer Motion */}
@@ -757,7 +947,7 @@ function NotificationsView() {
    SETTINGS VIEW
    ========================================================================== */
 function SettingsView() {
-  const { currentUser, verifyEmail, state, error, successMessage, clearMessages } = usePayWorth();
+  const { currentUser, verifyEmail, state, error, successMessage, clearMessages, submitKyc } = usePayWorth();
   const [kycOption, setKycOption] = useState<'ID' | 'Passport' | 'Drivers'>('ID');
   const [kycFile, setKycFile] = useState('');
   const [kycLoading, setKycLoading] = useState(false);
@@ -768,20 +958,14 @@ function SettingsView() {
     if (!kycFile.trim()) return;
 
     setKycLoading(true);
-    await new Promise((r) => setTimeout(r, 1200)); // Suspenseful security hashing simulation
-
-    // We mutate current local KYC status immediately on client for instant premium feedback
-    setKycVerified(true);
-    if (currentUser) {
-      currentUser.kycStatus = 'verified';
-      currentUser.trustScore = Math.min(100, currentUser.trustScore + 25);
-      currentUser.trustHistory = [
-        { date: new Date().toISOString().split('T')[0], change: 25, reason: 'KYC legal credentials clearance' },
-        ...currentUser.trustHistory,
-      ];
+    const success = await submitKyc(`${kycOption}-${kycFile}`);
+    if (success) {
+      setKycVerified(true);
+      alert('KYC Credentials successfully validated and cleared! Trust Rating boosted by +25.');
+    } else {
+      alert('KYC submission failed. Please try again.');
     }
     setKycLoading(false);
-    alert('KYC Credentials successfully validated and cleared! Trust Rating boosted by +25.');
   };
 
   return (

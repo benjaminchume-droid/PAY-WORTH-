@@ -53,6 +53,7 @@ export default function MarketplaceView() {
   const [textProof, setTextProof] = useState('');
   const [proofUrl, setProofUrl] = useState('');
   const [submittingProof, setSubmittingProof] = useState(false);
+  const [reportFeedback, setReportFeedback] = useState<string | null>(null);
 
   // Escrow live calculations
   const calculateEscrow = () => {
@@ -109,7 +110,10 @@ export default function MarketplaceView() {
 
   const handleCampaignReport = (title: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    alert(`Thank you. Campaign: "${title}" has been flagged for advertiser compliance audit.`);
+    setReportFeedback(`Thank you. Campaign "${title}" has been flagged for an advertiser compliance audit.`);
+    setTimeout(() => {
+      setReportFeedback(null);
+    }, 4000);
   };
 
   // Filter campaigns
@@ -151,6 +155,19 @@ export default function MarketplaceView() {
           <PlusCircle className="w-4.5 h-4.5" /> Launch Brief
         </button>
       </div>
+
+      <AnimatePresence>
+        {reportFeedback && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="mb-4 p-3 bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs rounded-xl flex items-center gap-2 font-mono"
+          >
+            ⚠️ {reportFeedback}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Workspace toggle: Explore vs Created Campaign reviews */}
       <div className="grid grid-cols-2 gap-2 bg-slate-900 p-1.5 rounded-xl mb-4 text-xs font-semibold text-center border border-white/5">

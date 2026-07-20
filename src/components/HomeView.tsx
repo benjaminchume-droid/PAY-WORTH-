@@ -68,7 +68,7 @@ export default function HomeView() {
         </div>
       </div>
 
-      {/* CORE FINANCIAL LEDGER CARD - LIQUID GLASS */}
+      {/* CORE FINANCIAL LEDGER CARD */}
       <div className="relative rounded-3xl border border-white/10 bg-white/5 p-5 overflow-hidden backdrop-blur-xl shadow-2xl">
         <div className="absolute top-[-40px] right-[-40px] w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
 
@@ -280,10 +280,10 @@ export default function HomeView() {
           <h4 className="text-xs font-bold font-mono uppercase tracking-wider">System Broadcast</h4>
         </div>
         <p className="text-xs font-semibold text-white mt-2">
-          Liquid Refraction System Upgrade V1.0
+          PayWorth Core Trust Engine Upgrade V1.0
         </p>
         <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
-          The security audit ledger is completely deployed. We are monitoring withdrawals dynamically. Any false task evidence attempts will automatically penalize Trust Rating scores by -15. Keep transactions clean!
+          The PayWorth Core database integration is fully active. The Trust Engine is dynamically monitoring task verification and withdrawal requests. Any fraudulent submission attempts will automatically trigger a Trust Score penalty of -15. Maintain a clean transaction ledger to unlock higher limits!
         </p>
       </div>
     </div>
