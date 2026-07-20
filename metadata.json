@@ -1,0 +1,6 @@
+{
+  "name": "PayWorth",
+  "description": "A premium rewards marketplace where users earn PayWorth Coins (PWC) through tasks, referrals, games, advertiser campaigns, and community participation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
