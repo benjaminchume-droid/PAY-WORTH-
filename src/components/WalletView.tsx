@@ -101,7 +101,7 @@ export default function WalletView() {
   useEffect(() => {
     const cleaned = recipientWallet.trim();
     if (cleaned.length === 10) {
-      const recipient = Object.values(state.users).find((u) => u.walletNumber === cleaned);
+      const recipient = (Object.values(state.users) as User[]).find((u) => u.walletNumber === cleaned);
       if (recipient) {
         setResolvedRecipient(recipient);
       } else {

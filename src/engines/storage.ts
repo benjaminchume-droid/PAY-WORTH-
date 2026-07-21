@@ -286,6 +286,10 @@ export function getInitialState(): AppState {
     dailyRewardClaimedAt: null,
     luckyWheelSpinsRemaining: 10,
     gamesPlayedToday: {},
+    selectedGamesToday: [],
+    completedWelcomeCampaigns: [],
+    verifiedWelcomeCampaigns: [],
+    createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(), // 5 days old so within 7-day Welcome period
     kycStatus: 'verified',
     trustHistory: [{ date: '2026-07-01', change: 100, reason: 'Founding account status' }],
     virtualAccount: {

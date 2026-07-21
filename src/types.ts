@@ -32,6 +32,11 @@ export interface User {
   dailyRewardClaimedAt: string | null;
   luckyWheelSpinsRemaining: number;
   gamesPlayedToday: Record<string, number>;
+  selectedGamesToday?: string[]; // track the 5 selected games for the day
+  completedWelcomeCampaigns?: string[]; // IDs of completed welcome campaigns
+  verifiedWelcomeCampaigns?: string[]; // IDs of welcome campaigns submitted/pending
+  createdAt?: string; // Account creation timestamp
+  lastPlayResetDate?: string; // track the date of last games reset for midnight auto-reset
   kycStatus: 'unverified' | 'pending' | 'verified';
   trustHistory: Array<{ date: string; change: number; reason: string }>;
   virtualAccount: {
