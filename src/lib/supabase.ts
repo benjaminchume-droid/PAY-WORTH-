@@ -1,17 +1,16 @@
 import { createClient } from '@supabase/supabase-js';
 
 const meta = import.meta as any;
-const supabaseUrl = meta.env?.VITE_SUPABASE_URL;
-const supabaseAnonKey = meta.env?.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = meta.env?.VITE_SUPABASE_URL || '';
+const supabaseAnonKey = meta.env?.VITE_SUPABASE_ANON_KEY || '';
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  const errMsg = 'CRITICAL CONFIGURATION ERROR: VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY is missing! The application cannot run without Supabase configured. Please set these in your env parameters.';
-  console.error(errMsg);
-  // Fail immediately on startup to prevent continuing with mock/fallback state
-  throw new Error(errMsg);
-}
+export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+// Use dummy credentials if missing so createClient does not crash the bundle
+const urlToUse = isSupabaseConfigured ? supabaseUrl : 'https://placeholder.supabase.co';
+const keyToUse = isSupabaseConfigured ? supabaseAnonKey : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyZWFkeSI6dHJ1ZX0.placeholder';
+
+export const supabase = createClient(urlToUse, keyToUse, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,

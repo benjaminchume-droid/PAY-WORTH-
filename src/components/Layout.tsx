@@ -101,7 +101,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
         {/* Balance Counter and Profile Options */}
         <div className="flex items-center gap-3">
-          {currentUser && (
+          {currentUser ? (
             <div
               onClick={() => { setActiveMenuScreen(null); setActiveTab('wallet'); }}
               className="bg-white/5 hover:bg-white/10 cursor-pointer border border-white/5 rounded-xl px-2.5 py-1.5 flex items-center gap-1.5 transition-all active:scale-95"
@@ -111,6 +111,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 {currentUser.pwcBalance.toLocaleString()} <span className="text-[10px] text-emerald-400 font-medium">PWC</span>
               </span>
             </div>
+          ) : (
+            <button
+              onClick={() => { setActiveMenuScreen(null); setActiveTab('home'); }}
+              className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-3.5 py-1.5 rounded-xl text-xs transition-all active:scale-95 shadow-md shadow-emerald-500/10"
+            >
+              Sign In
+            </button>
           )}
 
           <button
@@ -143,39 +150,45 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </button>
 
         <button
-          onClick={() => { setActiveMenuScreen(null); setActiveTab('tasks'); }}
+          onClick={() => { 
+            if (!currentUser) { setActiveMenuScreen('help'); } else { setActiveMenuScreen(null); setActiveTab('tasks'); }
+          }}
           className={`flex flex-col items-center gap-1 transition-all py-1 px-3 rounded-xl ${
-            activeTab === 'tasks' && !activeMenuScreen
+            (activeTab === 'tasks' && !activeMenuScreen) || (activeMenuScreen === 'help' && !currentUser)
               ? 'text-emerald-400 font-semibold'
               : 'text-slate-400 hover:text-white'
           }`}
         >
           <ClipboardList className="w-5 h-5" />
-          <span className="text-[10px] tracking-wide">Tasks</span>
+          <span className="text-[10px] tracking-wide">{!currentUser ? 'FAQ' : 'Tasks'}</span>
         </button>
 
         <button
-          onClick={() => { setActiveMenuScreen(null); setActiveTab('wallet'); }}
+          onClick={() => { 
+            if (!currentUser) { setActiveMenuScreen('about'); } else { setActiveMenuScreen(null); setActiveTab('wallet'); }
+          }}
           className={`flex flex-col items-center gap-1 transition-all py-1 px-3 rounded-xl ${
-            activeTab === 'wallet' && !activeMenuScreen
+            (activeTab === 'wallet' && !activeMenuScreen) || (activeMenuScreen === 'about' && !currentUser)
               ? 'text-emerald-400 font-semibold'
               : 'text-slate-400 hover:text-white'
           }`}
         >
           <Wallet className="w-5 h-5" />
-          <span className="text-[10px] tracking-wide">Wallet</span>
+          <span className="text-[10px] tracking-wide">{!currentUser ? 'About' : 'Wallet'}</span>
         </button>
 
         <button
-          onClick={() => { setActiveMenuScreen(null); setActiveTab('marketplace'); }}
+          onClick={() => { 
+            if (!currentUser) { setActiveMenuScreen('contact'); } else { setActiveMenuScreen(null); setActiveTab('marketplace'); }
+          }}
           className={`flex flex-col items-center gap-1 transition-all py-1 px-3 rounded-xl ${
-            activeTab === 'marketplace' && !activeMenuScreen
+            (activeTab === 'marketplace' && !activeMenuScreen) || (activeMenuScreen === 'contact' && !currentUser)
               ? 'text-emerald-400 font-semibold'
               : 'text-slate-400 hover:text-white'
           }`}
         >
           <ShoppingBag className="w-5 h-5" />
-          <span className="text-[10px] tracking-wide">Marketplace</span>
+          <span className="text-[10px] tracking-wide">{!currentUser ? 'Contact' : 'Marketplace'}</span>
         </button>
       </nav>
 
@@ -203,23 +216,37 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               <div>
                 {/* Profile header on drawer */}
                 <div className="p-5 border-b border-white/5 flex items-center gap-3">
-                  <img
-                    src={currentUser?.avatar}
-                    alt="User profile"
-                    referrerPolicy="no-referrer"
-                    className="w-11 h-11 rounded-full object-cover border border-emerald-400/30"
-                  />
-                  <div>
-                    <h4 className="text-sm font-semibold text-white tracking-tight flex items-center gap-1.5">
-                      {currentUser?.username}
-                      {currentUser?.emailVerified && (
-                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400/20" />
-                      )}
-                    </h4>
-                    <span className="text-[10px] bg-emerald-500/10 text-emerald-300 px-2 py-0.5 rounded-full font-mono mt-1 inline-block">
-                      {currentUser?.membershipTier}
-                    </span>
-                  </div>
+                  {currentUser ? (
+                    <>
+                      <img
+                        src={currentUser.avatar}
+                        alt="User profile"
+                        referrerPolicy="no-referrer"
+                        className="w-11 h-11 rounded-full object-cover border border-emerald-400/30"
+                      />
+                      <div>
+                        <h4 className="text-sm font-semibold text-white tracking-tight flex items-center gap-1.5">
+                          {currentUser.username}
+                          {currentUser.emailVerified && (
+                            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400/20" />
+                          )}
+                        </h4>
+                        <span className="text-[10px] bg-emerald-500/10 text-emerald-300 px-2 py-0.5 rounded-full font-mono mt-1 inline-block">
+                          {currentUser.membershipTier}
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-xs text-slate-400">Welcome to PayWorth. Sign in to start earning.</p>
+                      <button
+                        onClick={() => { setLeftDrawerOpen(false); setActiveMenuScreen(null); setActiveTab('home'); }}
+                        className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs py-2 rounded-xl transition-all shadow-md active:scale-95"
+                      >
+                        Sign In / Register
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Left Drawer Links */}
@@ -228,53 +255,89 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                     Navigation Engines
                   </span>
 
-                  {menuItems.map((item) => {
-                    const isSelected = activeMenuScreen === item.id;
-                    const Icon = item.icon;
+                  {currentUser ? (
+                    menuItems.map((item) => {
+                      const isSelected = activeMenuScreen === item.id;
+                      const Icon = item.icon;
 
-                    // Skip Admin Panel if user is not the admin
-                    if (item.requiresAdmin && currentUser?.email !== 'admin@payworth.com') {
-                      return null;
-                    }
+                      // Skip Admin Panel if user is not the admin
+                      if (item.requiresAdmin && currentUser?.email !== 'admin@payworth.com') {
+                        return null;
+                      }
 
-                    return (
-                      <button
-                        key={item.id}
-                        onClick={() => handleMenuClick(item.id)}
-                        className={`w-full flex items-center justify-between p-2.5 rounded-xl text-xs transition-all ${
-                          isSelected
-                            ? 'bg-emerald-500 text-slate-950 font-bold'
-                            : 'text-slate-300 hover:bg-white/5'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <Icon className={`w-4 h-4 ${isSelected ? 'text-slate-950' : 'text-slate-400'}`} />
-                          <span>{item.label}</span>
-                        </div>
-                        {item.badge ? (
-                          <span className="bg-red-500 text-white font-extrabold text-[9px] px-1.5 py-0.5 rounded-full">
-                            {item.badge}
-                          </span>
-                        ) : (
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => handleMenuClick(item.id)}
+                          className={`w-full flex items-center justify-between p-2.5 rounded-xl text-xs transition-all ${
+                            isSelected
+                              ? 'bg-emerald-500 text-slate-950 font-bold'
+                              : 'text-slate-300 hover:bg-white/5'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <Icon className={`w-4 h-4 ${isSelected ? 'text-slate-950' : 'text-slate-400'}`} />
+                            <span>{item.label}</span>
+                          </div>
+                          {item.badge ? (
+                            <span className="bg-red-500 text-white font-extrabold text-[9px] px-1.5 py-0.5 rounded-full">
+                              {item.badge}
+                            </span>
+                          ) : (
+                            <ChevronRight className="w-3.5 h-3.5 opacity-50" />
+                          )}
+                        </button>
+                      );
+                    })
+                  ) : (
+                    rightItems.map((item) => {
+                      const isSelected = activeMenuScreen === item.id;
+                      const Icon = item.icon;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => handleMenuClick(item.id)}
+                          className={`w-full flex items-center justify-between p-2.5 rounded-xl text-xs transition-all ${
+                            isSelected
+                              ? 'bg-emerald-500 text-slate-950 font-bold'
+                              : 'text-slate-300 hover:bg-white/5'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <Icon className={`w-4 h-4 ${isSelected ? 'text-slate-950' : 'text-slate-400'}`} />
+                            <span>{item.label}</span>
+                          </div>
                           <ChevronRight className="w-3.5 h-3.5 opacity-50" />
-                        )}
-                      </button>
-                    );
-                  })}
+                        </button>
+                      );
+                    })
+                  )}
                 </div>
               </div>
 
-              {/* Drawer footer containing logout */}
+              {/* Drawer footer containing logout / branding */}
               <div className="p-4 border-t border-white/5 bg-black/20">
-                <button
-                  onClick={() => {
-                    setLeftDrawerOpen(false);
-                    logout();
-                  }}
-                  className="w-full flex items-center justify-center gap-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 text-xs font-semibold py-2.5 rounded-xl transition-all"
-                >
-                  <LogOut className="w-4 h-4" /> Secure Logout
-                </button>
+                {currentUser ? (
+                  <button
+                    onClick={() => {
+                      setLeftDrawerOpen(false);
+                      logout();
+                    }}
+                    className="w-full flex items-center justify-center gap-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 text-xs font-semibold py-2.5 rounded-xl transition-all"
+                  >
+                    <LogOut className="w-4 h-4" /> Secure Logout
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setLeftDrawerOpen(false);
+                      setActiveMenuScreen('security');
+                    }}
+                    className="w-full flex items-center justify-center gap-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 hover:text-emerald-300 text-xs font-semibold py-2.5 rounded-xl transition-all"
+                  >
+                    <ShieldCheck className="w-4 h-4" /> Security Ledger
+                  </button>
+                )}
                 <div className="text-[9px] text-slate-500 text-center mt-3 font-mono">
                   PAYWORTH CORE v1.0 • GLASSLINE
                 </div>

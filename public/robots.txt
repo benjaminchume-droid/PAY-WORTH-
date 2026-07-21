@@ -1,0 +1,22 @@
+User-agent: *
+Allow: /$
+Allow: /about
+Allow: /contact
+Allow: /help
+Allow: /faq
+Allow: /privacy
+Allow: /terms
+Allow: /security
+Allow: /campaigns
+Allow: /games
+
+# Disallow indexing of private or transaction-sensitive states
+Disallow: /dashboard
+Disallow: /wallet
+Disallow: /transactions
+Disallow: /user
+Disallow: /auth/callback
+Disallow: /admin
+Disallow: /api/
+
+Sitemap: https://payworth.app/sitemap.xml

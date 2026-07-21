@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient: Emerald Deep Slate -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#059669" />
+      <stop offset="50%" stop-color="#10b981" />
+      <stop offset="100%" stop-color="#064e3b" />
+    </linearGradient>
+    
+    <!-- Refraction Ring Gradient -->
+    <linearGradient id="ringGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.6" />
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.0" />
+    </linearGradient>
+
+    <!-- Glass Refraction Overlay -->
+    <linearGradient id="glassGrad" x1="10%" y1="10%" x2="90%" y2="90%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.15" />
+      <stop offset="40%" stop-color="#ffffff" stop-opacity="0.05" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.4" />
+    </linearGradient>
+
+    <!-- Drop Shadow Filter -->
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="16" stdDeviation="20" flood-color="#000000" flood-opacity="0.5" />
+    </filter>
+    
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Outer Shadow Layer -->
+  <circle cx="256" cy="256" r="230" fill="none" filter="url(#shadow)" />
+
+  <!-- Base Card Circle -->
+  <circle cx="256" cy="256" r="220" fill="url(#bgGrad)" />
+
+  <!-- Liquid Glass Glow/Shine Ring -->
+  <circle cx="256" cy="256" r="220" fill="none" stroke="url(#ringGrad)" stroke-width="4" opacity="0.8" />
+
+  <!-- Inner Frosted Glass Accent -->
+  <circle cx="256" cy="256" r="216" fill="url(#glassGrad)" />
+
+  <!-- Central Brand Mark: Stylized 'PW' monogram with high-contrast, professional tech typography -->
+  <g transform="translate(148, 140)" filter="url(#glow)">
+    <!-- Main Token Iconography (PW combined in single elegant ribbon) -->
+    <path d="M 40 40 
+             L 40 180 
+             C 40 210, 80 210, 80 180 
+             L 80 40 
+             C 80 10, 120 10, 120 40 
+             L 120 180 
+             C 120 230, 170 230, 170 180 
+             L 170 100 
+             L 130 100 
+             L 130 140 
+             C 130 160, 150 160, 150 140 
+             L 150 120" 
+          fill="none" 
+          stroke="#ffffff" 
+          stroke-width="24" 
+          stroke-linecap="round" 
+          stroke-linejoin="round" />
+          
+    <path d="M 40 100 
+             L 100 100" 
+          fill="none" 
+          stroke="#ffffff" 
+          stroke-width="24" 
+          stroke-linecap="round" />
+  </g>
+
+  <!-- Outer Ambient Reflection Highlight -->
+  <path d="M 50 120 A 210 210 0 0 1 450 120" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" opacity="0.25" />
+</svg>
