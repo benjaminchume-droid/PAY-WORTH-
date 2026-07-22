@@ -14,6 +14,21 @@ const ROUTE_METADATA: Record<string, RouteMeta> = {
     description: 'Earn coins by completing campaigns, play instant mini-games, grow your referral network, and cash out securely with PayWorth\'s certified ledger.',
     canonical: 'https://payworth.app/'
   },
+  '/verify': {
+    title: 'Verify Account & Unlocks | PayWorth',
+    description: 'Complete email verification to activate your virtual PWC wallet, claim referral bonuses, and enable bank wire withdrawals.',
+    canonical: 'https://payworth.app/verify'
+  },
+  '/account_verify': {
+    title: 'Account Verification | PayWorth',
+    description: 'Cryptographic account verification portal for PayWorth users.',
+    canonical: 'https://payworth.app/account_verify'
+  },
+  '/auth': {
+    title: 'Portal Access & Sign In | PayWorth',
+    description: 'Secure multi-factor authentication portal to access your PayWorth workspace and virtual ledger.',
+    canonical: 'https://payworth.app/auth'
+  },
   '/campaigns': {
     title: 'Active Campaigns | PayWorth',
     description: 'Browse active marketing briefs and sponsor campaigns on PayWorth. Secure your task slots and earn validated PWC payouts.',
@@ -33,6 +48,36 @@ const ROUTE_METADATA: Record<string, RouteMeta> = {
     title: 'Mini Games Platform | PayWorth',
     description: 'Play responsive, high-fidelity mini-games on PayWorth to boost your level, earn XP multipliers, and claim bonus coin payloads.',
     canonical: 'https://payworth.app/games'
+  },
+  '/referrals': {
+    title: 'Referral Network & Rewards | PayWorth',
+    description: 'Invite members with your encrypted referral link and earn high-yield PWC commission rewards.',
+    canonical: 'https://payworth.app/referrals'
+  },
+  '/admin': {
+    title: 'Auditor & Admin Console | PayWorth',
+    description: 'Central management portal for task verifications, campaign escrow, and withdrawal settlement approvals.',
+    canonical: 'https://payworth.app/admin'
+  },
+  '/achievements': {
+    title: 'Achievements & Trophies | PayWorth',
+    description: 'Claim achievement badges and XP bonuses as you level up on the PayWorth platform.',
+    canonical: 'https://payworth.app/achievements'
+  },
+  '/membership': {
+    title: 'Membership Tiers & Perks | PayWorth',
+    description: 'Explore Dark Bronze, Silver, Gold, Platinum, and Diamond membership benefits on PayWorth.',
+    canonical: 'https://payworth.app/membership'
+  },
+  '/settings': {
+    title: 'Profile & Security Settings | PayWorth',
+    description: 'Configure multi-factor security, change email, set wallet PIN, and customize notifications.',
+    canonical: 'https://payworth.app/settings'
+  },
+  '/stats': {
+    title: 'Ledger Analytics & Stats | PayWorth',
+    description: 'View real-time financial charts, task completion rates, and wallet activity statistics.',
+    canonical: 'https://payworth.app/stats'
   },
   '/about': {
     title: 'About Glassline Studio | PayWorth',
@@ -86,7 +131,6 @@ export default function SEOAndRouteManager() {
 
   // Listen to PWA update events
   useEffect(() => {
-    // Detect custom sw update event from inline registerType of vite-plugin-pwa
     const handleSWUpdate = () => {
       setShowUpdatePrompt(true);
     };
@@ -96,10 +140,15 @@ export default function SEOAndRouteManager() {
     };
   }, []);
 
-  // URL to State (on mount & back/forward popstate)
+  // URL to Subsystem State (on mount & popstate back/forward navigation)
   useEffect(() => {
     const syncUrlToState = () => {
       const path = window.location.pathname;
+
+      if (path === '/verify' || path === '/account_verify') {
+        // Verification route handled directly by component router
+        return;
+      }
 
       if (path === '/about') {
         setActiveMenuScreen('about');
@@ -115,6 +164,18 @@ export default function SEOAndRouteManager() {
         setActiveMenuScreen('help');
       } else if (path === '/games') {
         setActiveMenuScreen('games');
+      } else if (path === '/referrals' || path === '/network') {
+        setActiveMenuScreen('referrals');
+      } else if (path === '/admin') {
+        setActiveMenuScreen('admin');
+      } else if (path === '/achievements') {
+        setActiveMenuScreen('achievements');
+      } else if (path === '/membership') {
+        setActiveMenuScreen('membership');
+      } else if (path === '/settings') {
+        setActiveMenuScreen('settings');
+      } else if (path === '/stats') {
+        setActiveMenuScreen('stats');
       } else if (path === '/campaigns' || path === '/marketplace') {
         setActiveTab('marketplace');
         setActiveMenuScreen(null);
@@ -124,7 +185,7 @@ export default function SEOAndRouteManager() {
       } else if (path === '/tasks') {
         setActiveTab('tasks');
         setActiveMenuScreen(null);
-      } else if (path === '/' || path === '/home') {
+      } else if (path === '/' || path === '/home' || path === '/dashboard') {
         setActiveTab('home');
         setActiveMenuScreen(null);
       }
@@ -137,15 +198,20 @@ export default function SEOAndRouteManager() {
     };
   }, [setActiveTab, setActiveMenuScreen]);
 
-  // State to URL & SEO Head Customizer
+  // Subsystem State to URL & Dynamic Head/SEO Manager
   useEffect(() => {
+    const path = window.location.pathname;
+    if (path === '/verify' || path === '/account_verify') {
+      return;
+    }
+
     let currentPath = '/';
-    
+
     if (activeMenuScreen) {
-      if (['about', 'privacy', 'terms', 'security', 'contact', 'help', 'games'].includes(activeMenuScreen)) {
+      if (['about', 'privacy', 'terms', 'security', 'contact', 'help', 'games', 'referrals', 'admin', 'achievements', 'membership', 'settings', 'stats'].includes(activeMenuScreen)) {
         currentPath = `/${activeMenuScreen}`;
       } else {
-        currentPath = '/'; // defaults to home
+        currentPath = '/';
       }
     } else {
       switch (activeTab) {
@@ -165,7 +231,7 @@ export default function SEOAndRouteManager() {
       }
     }
 
-    // Push State only if pathname differs to preserve navigation stack integrity
+    // Push State only if pathname differs to preserve browser history
     if (window.location.pathname !== currentPath) {
       window.history.pushState(null, '', currentPath);
     }
@@ -225,7 +291,6 @@ export default function SEOAndRouteManager() {
       jsonLdScript.remove();
     }
 
-    // Compile comprehensive list of structured data schemas
     const schemaData = [
       {
         '@context': 'https://schema.org',
@@ -268,7 +333,6 @@ export default function SEOAndRouteManager() {
       }
     ];
 
-    // Page-specific schema extensions
     if (currentPath === '/help') {
       schemaData.push({
         '@context': 'https://schema.org',
@@ -292,27 +356,6 @@ export default function SEOAndRouteManager() {
           }
         ]
       } as any);
-    } else if (currentPath === '/privacy') {
-      schemaData.push({
-        '@context': 'https://schema.org',
-        '@type': 'WebPage',
-        'name': 'Privacy & Encryption Standards',
-        'description': 'Review PayWorth\'s SSL and AES-256 local ledger hashing policies.'
-      } as any);
-    } else if (currentPath === '/terms') {
-      schemaData.push({
-        '@context': 'https://schema.org',
-        '@type': 'WebPage',
-        'name': 'Terms of Use & Policies',
-        'description': 'Read PayWorth\'s micro-task terms and ledger requirements.'
-      } as any);
-    } else if (currentPath === '/contact') {
-      schemaData.push({
-        '@context': 'https://schema.org',
-        '@type': 'ContactPage',
-        'name': 'Secure Support Desk',
-        'description': 'Direct connection to Glassline audit desk.'
-      } as any);
     }
 
     jsonLdScript = document.createElement('script');
@@ -324,7 +367,6 @@ export default function SEOAndRouteManager() {
   }, [activeTab, activeMenuScreen]);
 
   const handleUpdateApp = () => {
-    // Clear registration and force location refresh to load new bundle
     if (navigator.serviceWorker) {
       navigator.serviceWorker.getRegistrations().then((registrations) => {
         for (const registration of registrations) {
@@ -339,7 +381,6 @@ export default function SEOAndRouteManager() {
 
   return (
     <>
-      {/* 1. Dynamic Offline warning indicator (PWA Requirement) */}
       {isOffline && (
         <div className="fixed top-safe left-0 right-0 z-50 p-3 bg-red-500/90 backdrop-blur-md text-white text-xs font-bold font-sans flex items-center justify-between shadow-lg transition-all animate-slide-in">
           <div className="flex items-center gap-2">
@@ -350,7 +391,6 @@ export default function SEOAndRouteManager() {
         </div>
       )}
 
-      {/* Online indicator toast (quick flash when returning online) */}
       {!isOffline && navigator.onLine === false && (
         <div className="fixed top-safe left-0 right-0 z-50 p-3 bg-emerald-500/90 backdrop-blur-md text-slate-950 text-xs font-bold font-sans flex items-center gap-2 shadow-lg animate-fade-out">
           <Wifi className="w-4 h-4 text-slate-950" />
@@ -358,7 +398,6 @@ export default function SEOAndRouteManager() {
         </div>
       )}
 
-      {/* 2. Interactive App Update Notifier */}
       {showUpdatePrompt && (
         <div className="fixed bottom-24 left-4 right-4 z-50 max-w-sm mx-auto bg-slate-900/95 border border-emerald-500/30 backdrop-blur-xl rounded-2xl p-4 shadow-2xl flex flex-col gap-3 transition-all">
           <div className="flex items-start gap-3">

@@ -474,7 +474,7 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
         type: 'signup',
         email: email.trim(),
         options: {
-          emailRedirectTo: window.location.origin,
+          emailRedirectTo: `${window.location.origin}/verify`,
         }
       });
 
@@ -526,7 +526,7 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       const { error: resetErr } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-        redirectTo: window.location.origin,
+        redirectTo: `${window.location.origin}/verify`,
       });
       if (resetErr) throw resetErr;
       setSuccessMessage(`Password recovery instructions sent to: ${email}`);
@@ -577,7 +577,7 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
         type: 'signup',
         email: emailToSend,
         options: {
-          emailRedirectTo: window.location.origin,
+          emailRedirectTo: `${window.location.origin}/verify`,
         }
       });
       if (resendErr) throw resendErr;

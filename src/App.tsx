@@ -11,9 +11,27 @@ import WalletView from './components/WalletView';
 import MarketplaceView from './components/MarketplaceView';
 import MenuView from './components/MenuView';
 import SEOAndRouteManager from './components/SEOAndRouteManager';
+import VerificationEngine from './components/VerificationEngine';
 
 function AppContent() {
   const { currentUser, activeTab, activeMenuScreen } = usePayWorth();
+
+  // Check if current URL route is the verification portal or callback payload
+  const currentPath = window.location.pathname;
+  const currentHash = window.location.hash;
+  const currentSearch = window.location.search;
+
+  const isVerificationRoute = 
+    currentPath === '/verify' || 
+    currentPath === '/account_verify' ||
+    currentHash.includes('type=signup') ||
+    currentHash.includes('type=email_change') ||
+    currentHash.includes('access_token') ||
+    currentSearch.includes('code=');
+
+  if (isVerificationRoute) {
+    return <VerificationEngine />;
+  }
 
   const isPublicPage = activeMenuScreen && ['about', 'privacy', 'terms', 'security', 'contact', 'help'].includes(activeMenuScreen);
 
@@ -60,5 +78,3 @@ export default function App() {
     </PayWorthProvider>
   );
 }
-
-
