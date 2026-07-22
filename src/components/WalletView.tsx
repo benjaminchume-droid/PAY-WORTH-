@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePayWorth } from '../engines/StateContext';
+import EmailVerificationGuardModal from './EmailVerificationGuardModal';
 import { LedgerEntry, User } from '../types';
 import {
   Wallet,
@@ -87,6 +88,7 @@ export default function WalletView() {
   
   // Copy indicators
   const [copiedWalletNum, setCopiedWalletNum] = useState(false);
+  const [guardModalOpen, setGuardModalOpen] = useState(false);
 
   // Sync state limits when currentUser loads
   useEffect(() => {
@@ -187,6 +189,10 @@ export default function WalletView() {
   };
 
   const queueWithPin = (action: () => Promise<void>) => {
+    if (!currentUser.emailVerified) {
+      setGuardModalOpen(true);
+      return;
+    }
     clearMessages();
     setAuthorizedAction(() => action);
     if (!currentUser.walletPin) {
@@ -993,6 +999,12 @@ export default function WalletView() {
           )}
         </div>
       </div>
+
+      <EmailVerificationGuardModal
+        isOpen={guardModalOpen}
+        onClose={() => setGuardModalOpen(false)}
+        actionName="Wallet Transactions & Withdrawals"
+      />
     </div>
   );
 }

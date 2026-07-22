@@ -84,7 +84,7 @@ You are responsible for:
 * Maintaining accurate account information.
 * All activity occurring under your account.
 
-Google Sign-In, email verification, phone verification, or identity verification may be required for certain features.
+Email verification, password authentication, phone verification, or identity verification may be required for certain features.
 
 ---
 
@@ -322,7 +322,8 @@ We may collect:
 * Profile picture (optional)
 
 ### Authentication Data
-* Google Sign-In information
+* Email and password credentials
+* Supabase Auth session tokens
 * Login history
 * Session identifiers
 * Device identifiers

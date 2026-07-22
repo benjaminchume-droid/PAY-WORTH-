@@ -14,6 +14,50 @@ import {
   MembershipTier
 } from '../types';
 
+export function normalizeProfile(raw: any): User {
+  if (!raw) return raw;
+  return {
+    id: raw.id,
+    email: raw.email || '',
+    username: raw.username || raw.display_name || (raw.email ? raw.email.split('@')[0] : 'Member'),
+    avatar: raw.avatar || raw.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb',
+    isVerified: Boolean(raw.isVerified ?? raw.is_verified ?? false),
+    pwcBalance: Number(raw.pwcBalance ?? raw.pwc_balance ?? 0),
+    pendingBalance: Number(raw.pendingBalance ?? raw.pending_balance ?? 0),
+    lockedBalance: Number(raw.lockedBalance ?? raw.locked_balance ?? 0),
+    lifetimeEarned: Number(raw.lifetimeEarned ?? raw.lifetime_earned ?? 0),
+    lifetimeWithdrawn: Number(raw.lifetimeWithdrawn ?? raw.lifetime_withdrawn ?? 0),
+    trustScore: Number(raw.trustScore ?? raw.trust_score ?? 100),
+    xp: Number(raw.xp ?? 0),
+    level: Number(raw.level ?? 1),
+    membershipTier: (raw.membershipTier || raw.membership_tier || 'Dark Bronze') as MembershipTier,
+    referralCode: raw.referralCode || raw.referral_code || '',
+    referredBy: raw.referredBy || raw.referred_by || null,
+    onboardingCompleted: Boolean(raw.onboardingCompleted ?? raw.onboarding_completed ?? true),
+    welcomeCompleted: Boolean(raw.welcomeCompleted ?? raw.welcome_completed ?? true),
+    emailVerified: Boolean(raw.emailVerified ?? raw.email_verified ?? false),
+    achievementsClaimed: raw.achievementsClaimed || raw.achievements_claimed || [],
+    dailyRewardClaimedAt: raw.dailyRewardClaimedAt || raw.daily_reward_claimed_at || null,
+    luckyWheelSpinsRemaining: Number(raw.luckyWheelSpinsRemaining ?? raw.lucky_wheel_spins_remaining ?? 1),
+    gamesPlayedToday: raw.gamesPlayedToday || raw.games_played_today || {},
+    selectedGamesToday: raw.selectedGamesToday || raw.selected_games_today || [],
+    completedWelcomeCampaigns: raw.completedWelcomeCampaigns || raw.completed_welcome_campaigns || [],
+    verifiedWelcomeCampaigns: raw.verifiedWelcomeCampaigns || raw.verified_welcome_campaigns || [],
+    createdAt: raw.createdAt || raw.created_at || new Date().toISOString(),
+    kycStatus: raw.kycStatus || raw.kyc_status || 'unverified',
+    trustHistory: raw.trustHistory || raw.trust_history || [],
+    virtualAccount: raw.virtualAccount || raw.virtual_account || null,
+    walletNumber: raw.walletNumber || raw.wallet_number || '',
+    walletStatus: raw.walletStatus || raw.wallet_status || 'active',
+    walletPin: raw.walletPin || raw.wallet_pin || null,
+    dailyLimit: Number(raw.dailyLimit ?? raw.daily_limit ?? 5000),
+    monthlyLimit: Number(raw.monthlyLimit ?? raw.monthly_limit ?? 50000),
+    spendingLimit: Number(raw.spendingLimit ?? raw.spending_limit ?? 2000),
+    walletLevel: Number(raw.walletLevel ?? raw.wallet_level ?? 1),
+    miningState: raw.miningState || raw.mining_state || undefined,
+  };
+}
+
 interface StateContextType {
   appState: AppState;
   loading: boolean;
@@ -29,14 +73,14 @@ interface StateContextType {
   
   // Actions
   login: (email: string, password: string) => Promise<boolean>;
-  signup: (email: string, password: string, username: string, referralCode?: string) => Promise<boolean>;
+  signup: (email: string, password: string, username: string, fullName?: string, referralCode?: string) => Promise<boolean>;
   logout: () => Promise<void>;
   forgotPassword: (email: string) => Promise<void>;
   updatePassword: (newPassword: string) => Promise<boolean>;
   resendVerificationEmail: (targetEmail?: string) => Promise<boolean>;
+  changeEmail: (newEmail: string) => Promise<boolean>;
   refreshUserSession: () => Promise<void>;
   verifyEmail: () => Promise<boolean>;
-  loginWithGoogle: () => Promise<boolean>;
   onboardingComplete: () => Promise<void>;
   welcomeComplete: (dontShowAgain: boolean) => Promise<void>;
   claimDailyReward: () => Promise<boolean>;
@@ -107,14 +151,28 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchAppData = async (userId: string) => {
     try {
-      const { data: userProfile, error: userError } = await supabase
-        .from('users')
+      const { data: rawProfile, error: userError } = await supabase
+        .from('profiles')
         .select('*')
         .eq('id', userId)
-        .single();
+        .maybeSingle();
 
-      if (userError || !userProfile) {
+      if (userError || !rawProfile) {
         throw new Error(userError?.message || 'PayWorth services profile is not provisioned or cannot be reached.');
+      }
+
+      const userProfile = normalizeProfile(rawProfile);
+
+      // Check real Supabase Auth email verification status
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      const isAuthVerified = Boolean(authUser?.email_confirmed_at || authUser?.user_metadata?.email_verified);
+      const effectiveVerified = isAuthVerified || userProfile.emailVerified || false;
+
+      if (effectiveVerified && !userProfile.emailVerified) {
+        await supabase.from('profiles').update({ emailVerified: true }).eq('id', userId);
+        userProfile.emailVerified = true;
+      } else {
+        userProfile.emailVerified = effectiveVerified;
       }
 
       const [
@@ -139,6 +197,36 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
         supabase.from('referrals').select('*').eq('referrerId', userId),
       ]);
 
+      const userNotifs = (notificationsData || []) as Notification[];
+      const hasV112Notif = userNotifs.some(n => n.id === `v112_announcement_${userId}` || n.title.includes('v1.1.2'));
+
+      if (!hasV112Notif) {
+        const v112Notif: Notification = {
+          id: `v112_announcement_${userId}`,
+          title: 'Welcome to PayWorth v1.1.2',
+          message: `🚀 Welcome to PayWorth v1.1.2!\n\nWhat's New in this Release:\n• Authentication Improvements: Seamless Email & Password registration and sign-in with instant session activation, password recovery, and elimination of legacy magic links.\n• Security Enhancements: Production Supabase Auth integration, session persistence, automatic token refresh, rate-limit safeguards, and anti-fraud locks.\n• Referral System Updates: Instant referral tracking on registration, anti-spam verification checks, and verification requirements for bonus payouts.\n• Performance Improvements: Fast state synchronization, optimized session revalidation, and zero-latency loading states.\n• UI/UX Refinements: Dedicated Email Verification portal, persistent in-app verification banner, and feature restriction overlays.\n\n💡 Note: Please verify your email address to unlock all platform features including withdrawals, task rewards, games, and referrals. Thank you for choosing PayWorth!`,
+          category: 'system',
+          read: false,
+          date: new Date().toISOString(),
+        };
+
+        try {
+          await supabase.from('notifications').insert({
+            id: v112Notif.id,
+            userId,
+            title: v112Notif.title,
+            message: v112Notif.message,
+            category: v112Notif.category,
+            read: false,
+            date: v112Notif.date,
+          });
+        } catch (e) {
+          console.log('Announcement notification sync note:', e);
+        }
+
+        userNotifs.unshift(v112Notif);
+      }
+
       const userMap: Record<string, User> = {
         [userProfile.email.toLowerCase()]: userProfile as User,
         [userProfile.id]: userProfile as User,
@@ -152,7 +240,7 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
         taskSubmissions: (submissionsData || []) as TaskSubmission[],
         campaigns: (campaignsData || []) as Campaign[],
         campaignSubmissions: (campSubmissionsData || []) as CampaignSubmission[],
-        notifications: { [userId]: (notificationsData || []) as Notification[] },
+        notifications: { [userId]: userNotifs },
         withdrawals: (withdrawalsData || []) as WithdrawalRequest[],
         fundingRequests: (fundingData || []) as FundingRequest[],
         referrals: { [userId]: (referralsData || []).map((r: any) => r.referredId) },
@@ -267,7 +355,13 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
   };
 
   // 2. Sign Up Wrapper
-  const signup = async (email: string, password: string, username: string, referralCode?: string): Promise<boolean> => {
+  const signup = async (
+    email: string,
+    password: string,
+    username: string,
+    fullName?: string,
+    referralCode?: string
+  ): Promise<boolean> => {
     setLoading(true);
     clearMessages();
     try {
@@ -287,7 +381,7 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
       let referredBy: string | null = null;
       if (referralCode && referralCode.trim()) {
         const { data: refUser, error: refErr } = await supabase
-          .from('users')
+          .from('profiles')
           .select('id')
           .eq('referralCode', referralCode.trim().toUpperCase())
           .maybeSingle();
@@ -307,6 +401,7 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
           emailRedirectTo: window.location.origin,
           data: {
             username: username.trim(),
+            fullName: fullName?.trim() || username.trim(),
             referredBy,
             avatar: `https://images.unsplash.com/photo-${1500000000000 + Math.floor(Math.random() * 9999999)}?auto=format&fit=crop&q=80&w=200`,
           }
@@ -316,11 +411,75 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
       if (authErr) throw authErr;
       if (!data.user) throw new Error('Sign up failure.');
 
-      if (data.session?.user) {
-        await fetchAppData(data.session.user.id);
+      // Ensure user is signed in immediately after registration without waiting for email verification
+      let activeUserId = data.session?.user?.id || data.user.id;
+      if (!data.session) {
+        const { data: loginData } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        });
+        if (loginData?.user) {
+          activeUserId = loginData.user.id;
+        }
       }
 
-      setSuccessMessage('Account registered successfully! Please check your email for the verification link.');
+      // Check / provision DB user profile if not yet created
+      const { data: existingProf } = await supabase.from('profiles').select('id').eq('id', activeUserId).maybeSingle();
+      if (!existingProf) {
+        const genRefCode = `PW${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+        const walletNumber = `412${Math.floor(1000000 + Math.random() * 9000000)}`;
+        await supabase.from('profiles').insert({
+          id: activeUserId,
+          email: email.trim(),
+          username: username.trim(),
+          avatar: `https://images.unsplash.com/photo-${1500000000000 + Math.floor(Math.random() * 9999999)}?auto=format&fit=crop&q=80&w=200`,
+          isVerified: false,
+          pwcBalance: 100,
+          pendingBalance: 0,
+          lockedBalance: 0,
+          lifetimeEarned: 100,
+          lifetimeWithdrawn: 0,
+          trustScore: 80,
+          xp: 50,
+          level: 1,
+          membershipTier: 'Dark Bronze',
+          referralCode: genRefCode,
+          referredBy,
+          onboardingCompleted: false,
+          welcomeCompleted: false,
+          emailVerified: false,
+          achievementsClaimed: [],
+          dailyRewardClaimedAt: null,
+          luckyWheelSpinsRemaining: 1,
+          gamesPlayedToday: {},
+          selectedGamesToday: [],
+          completedWelcomeCampaigns: [],
+          verifiedWelcomeCampaigns: [],
+          createdAt: new Date().toISOString(),
+          kycStatus: 'unverified',
+          trustHistory: [{ date: new Date().toISOString(), change: 80, reason: 'Initial Registration' }],
+          virtualAccount: null,
+          walletNumber,
+          walletStatus: 'active',
+          walletPin: null,
+          dailyLimit: 5000,
+          monthlyLimit: 50000,
+          spendingLimit: 2000,
+          walletLevel: 1,
+        });
+      }
+
+      // Automatically send verification email
+      await supabase.auth.resend({
+        type: 'signup',
+        email: email.trim(),
+        options: {
+          emailRedirectTo: window.location.origin,
+        }
+      });
+
+      await fetchAppData(activeUserId);
+      setSuccessMessage('Registration successful! You are now logged in. A verification email has been dispatched to your inbox.');
       return true;
     } catch (err: any) {
       console.error(err);
@@ -453,22 +612,27 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
     return await resendVerificationEmail();
   };
 
-  // 6. Sign In With Google Wrapper
-  const loginWithGoogle = async (): Promise<boolean> => {
+  // 7. Change Email Address
+  const changeEmail = async (newEmail: string): Promise<boolean> => {
     setLoading(true);
     clearMessages();
     try {
-      const { error: authErr } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: window.location.origin,
-        },
-      });
-      if (authErr) throw authErr;
+      if (!newEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
+        setError('Please enter a valid new email address.');
+        return false;
+      }
+      const { error: updateErr } = await supabase.auth.updateUser({ email: newEmail });
+      if (updateErr) throw updateErr;
+
+      if (appState.currentUser) {
+        await supabase.from('profiles').update({ email: newEmail, emailVerified: false }).eq('id', appState.currentUser.id);
+        await fetchAppData(appState.currentUser.id);
+      }
+      setSuccessMessage(`Email address updated to ${newEmail}. A verification email has been dispatched to your new address.`);
       return true;
     } catch (err: any) {
       console.error(err);
-      setError(err.message || 'Unable to connect to PayWorth services. Please try again.');
+      setError(parseAuthError(err));
       return false;
     } finally {
       setLoading(false);
@@ -480,7 +644,7 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
     if (!appState.currentUser) return;
     try {
       const { error: upErr } = await supabase
-        .from('users')
+        .from('profiles')
         .update({ onboardingCompleted: true })
         .eq('id', appState.currentUser.id);
       if (upErr) throw upErr;
@@ -495,7 +659,7 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
     if (!appState.currentUser) return;
     try {
       const { error: upErr } = await supabase
-        .from('users')
+        .from('profiles')
         .update({ welcomeCompleted: dontShowAgain })
         .eq('id', appState.currentUser.id);
       if (upErr) throw upErr;
@@ -531,7 +695,7 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
       if (creditErr) throw creditErr;
 
       const { error: upErr } = await supabase
-        .from('users')
+        .from('profiles')
         .update({ dailyRewardClaimedAt: now.toISOString() })
         .eq('id', appState.currentUser.id);
 
@@ -567,7 +731,7 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
       const randomPrize = prizes[Math.floor(Math.random() * prizes.length)];
 
       const { error: upErr } = await supabase
-        .from('users')
+        .from('profiles')
         .update({ luckyWheelSpinsRemaining: appState.currentUser.luckyWheelSpinsRemaining - 1 })
         .eq('id', appState.currentUser.id);
 
@@ -582,7 +746,7 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
         });
       } else if (randomPrize.type === 'xp') {
         await supabase
-          .from('users')
+          .from('profiles')
           .update({ xp: appState.currentUser.xp + randomPrize.amount })
           .eq('id', appState.currentUser.id);
       }
@@ -782,7 +946,7 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
       }
 
       const { error: upErr } = await supabase
-        .from('users')
+        .from('profiles')
         .update({ achievementsClaimed: [...appState.currentUser.achievementsClaimed, achievementId] })
         .eq('id', appState.currentUser.id);
 
@@ -871,7 +1035,7 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     try {
       const { data: recipient, error: recErr } = await supabase
-        .from('users')
+        .from('profiles')
         .select('id')
         .eq('email', recipientEmail.toLowerCase())
         .maybeSingle();
@@ -923,7 +1087,7 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
       });
 
       const { error: upErr } = await supabase
-        .from('users')
+        .from('profiles')
         .update({ membershipTier: tierName })
         .eq('id', appState.currentUser.id);
 
@@ -980,7 +1144,7 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
       const leveledUp = nextLevel > appState.currentUser.level;
 
       const { error: upErr } = await supabase
-        .from('users')
+        .from('profiles')
         .update({ xp: nextXP, level: nextLevel, gamesPlayedToday: nextGames })
         .eq('id', appState.currentUser.id);
 
@@ -1038,7 +1202,7 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
       const nextLineup = [...lineup, gameId];
 
       const { error: upErr } = await supabase
-        .from('users')
+        .from('profiles')
         .update({ selectedGamesToday: nextLineup })
         .eq('id', appState.currentUser.id);
 
@@ -1086,7 +1250,7 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     try {
       const { error: upErr } = await supabase
-        .from('users')
+        .from('profiles')
         .update({ kycStatus: 'pending' })
         .eq('id', appState.currentUser.id);
 
@@ -1110,7 +1274,7 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     try {
       const { error: upErr } = await supabase
-        .from('users')
+        .from('profiles')
         .update({ walletPin: pin })
         .eq('id', appState.currentUser.id);
 
@@ -1134,7 +1298,7 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     try {
       const { error: upErr } = await supabase
-        .from('users')
+        .from('profiles')
         .update({ dailyLimit: daily, monthlyLimit: monthly, spendingLimit: spending })
         .eq('id', appState.currentUser.id);
 
@@ -1158,7 +1322,7 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     try {
       const { error: upErr } = await supabase
-        .from('users')
+        .from('profiles')
         .update({ walletStatus: status })
         .eq('id', appState.currentUser.id);
 
@@ -1234,7 +1398,7 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     try {
       const { data: recipient, error: recErr } = await supabase
-        .from('users')
+        .from('profiles')
         .select('id')
         .eq('walletNumber', targetWalletNumber)
         .maybeSingle();
@@ -1450,7 +1614,7 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
       };
 
       await supabase
-        .from('users')
+        .from('profiles')
         .update({ miningState: updatedMiningState })
         .eq('id', appState.currentUser.id);
 
@@ -1486,9 +1650,9 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
         forgotPassword,
         updatePassword,
         resendVerificationEmail,
+        changeEmail,
         refreshUserSession,
         verifyEmail,
-        loginWithGoogle,
         onboardingComplete,
         welcomeComplete,
         claimDailyReward,

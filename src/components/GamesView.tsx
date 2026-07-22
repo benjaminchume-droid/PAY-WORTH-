@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePayWorth } from '../engines/StateContext';
+import EmailVerificationGuardModal from './EmailVerificationGuardModal';
 import { GAMES_CATALOG_100 } from '../data/gamesCatalog';
 import { CatalogGame, GameCategory } from '../types';
 import { MEMBERSHIP_FULL_SPECS } from '../data/membershipData';
@@ -32,6 +33,7 @@ export default function GamesView() {
   const [gameScore, setGameScore] = useState(0);
   const [gameReward, setGameReward] = useState<{ reward: number; xp: number } | null>(null);
   const [playing, setPlaying] = useState(false);
+  const [guardModalOpen, setGuardModalOpen] = useState(false);
 
   if (!currentUser) return null;
 
@@ -71,6 +73,10 @@ export default function GamesView() {
   });
 
   const handleStartGame = (game: CatalogGame) => {
+    if (!currentUser.emailVerified) {
+      setGuardModalOpen(true);
+      return;
+    }
     const requiredIndex = tierOrder.indexOf(game.minTier);
     if (requiredIndex > userTierIndex) {
       setActiveMenuScreen('membership');
@@ -282,6 +288,12 @@ export default function GamesView() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <EmailVerificationGuardModal
+        isOpen={guardModalOpen}
+        onClose={() => setGuardModalOpen(false)}
+        actionName="Mini Games & Arcade Payouts"
+      />
     </div>
   );
 }

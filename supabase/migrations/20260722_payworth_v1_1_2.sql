@@ -4,7 +4,7 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- 1. USERS & MEMBERSHIPS TABLE
-CREATE TABLE IF NOT EXISTS public.users (
+CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email TEXT UNIQUE NOT NULL,
   username TEXT UNIQUE NOT NULL,
@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS public.users (
   level INT DEFAULT 1,
   membership_tier TEXT DEFAULT 'Dark Bronze',
   referral_code TEXT UNIQUE NOT NULL,
-  referred_by UUID REFERENCES public.users(id),
+  referred_by UUID REFERENCES public.profiles(id),
   onboarding_completed BOOLEAN DEFAULT FALSE,
   welcome_completed BOOLEAN DEFAULT FALSE,
   email_verified BOOLEAN DEFAULT FALSE,
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS public.users (
 -- 2. FINANCIAL LEDGER
 CREATE TABLE IF NOT EXISTS public.ledger (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   type TEXT NOT NULL CHECK (type IN ('credit', 'debit')),
   amount NUMERIC(15, 2) NOT NULL CHECK (amount > 0),
   balance_after NUMERIC(15, 2) NOT NULL,
@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS public.campaigns (
   slots INT NOT NULL CHECK (slots > 0),
   remaining_slots INT NOT NULL,
   reward_pool NUMERIC(15, 2) NOT NULL,
-  creator_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  creator_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   creator_name TEXT NOT NULL,
   trust_rating INT DEFAULT 100,
   deadline TIMESTAMPTZ NOT NULL,
@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS public.campaigns (
 CREATE TABLE IF NOT EXISTS public.campaign_submissions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   campaign_id UUID NOT NULL REFERENCES public.campaigns(id) ON DELETE CASCADE,
-  user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   user_name TEXT NOT NULL,
   evidence_url TEXT,
   text_evidence TEXT NOT NULL,
@@ -85,7 +85,7 @@ CREATE TABLE IF NOT EXISTS public.campaign_submissions (
 -- 5. MINING SESSIONS
 CREATE TABLE IF NOT EXISTS public.mining_sessions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID UNIQUE NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  user_id UUID UNIQUE NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   bot_name TEXT NOT NULL,
   tier TEXT NOT NULL,
   started_at TIMESTAMPTZ DEFAULT NOW(),
@@ -98,8 +98,8 @@ CREATE TABLE IF NOT EXISTS public.mining_sessions (
 -- 6. ENTERPRISE REFERRALS & FRAUD TRACKING
 CREATE TABLE IF NOT EXISTS public.referrals (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  referrer_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-  referred_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  referrer_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  referred_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   type TEXT DEFAULT 'standard' CHECK (type IN ('standard', 'premium')),
   reward_pwc NUMERIC(15, 2) DEFAULT 50.00,
   status TEXT DEFAULT 'pending' CHECK (status IN ('visited', 'signed_up', 'qualified', 'pending', 'approved', 'rejected', 'fraud')),
@@ -111,7 +111,7 @@ CREATE TABLE IF NOT EXISTS public.referrals (
 -- 7. WITHDRAWALS
 CREATE TABLE IF NOT EXISTS public.withdrawals (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   user_name TEXT NOT NULL,
   amount NUMERIC(15, 2) NOT NULL CHECK (amount > 0),
   bank_name TEXT NOT NULL,
@@ -124,7 +124,7 @@ CREATE TABLE IF NOT EXISTS public.withdrawals (
 );
 
 -- ROW LEVEL SECURITY (RLS) POLICIES
-ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ledger ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.campaigns ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.campaign_submissions ENABLE ROW LEVEL SECURITY;
@@ -133,8 +133,8 @@ ALTER TABLE public.referrals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.withdrawals ENABLE ROW LEVEL SECURITY;
 
 -- Users Policy
-CREATE POLICY "Users view own record or public profiles" ON public.users FOR SELECT USING (true);
-CREATE POLICY "Users update own record" ON public.users FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "Users view own record or public profiles" ON public.profiles FOR SELECT USING (true);
+CREATE POLICY "Users update own record" ON public.profiles FOR UPDATE USING (auth.uid() = id);
 
 -- Ledger Policy
 CREATE POLICY "Users view own ledger" ON public.ledger FOR SELECT USING (auth.uid() = user_id);

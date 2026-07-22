@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePayWorth } from '../engines/StateContext';
+import EmailVerificationGuardModal from './EmailVerificationGuardModal';
 import {
   Sparkles,
   Coins,
@@ -46,6 +47,7 @@ export default function CreateCampaignView() {
   const [formError, setFormError] = useState<string | null>(null);
   const [creationSuccess, setCreationSuccess] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [guardModalOpen, setGuardModalOpen] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -117,6 +119,10 @@ export default function CreateCampaignView() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!currentUser?.emailVerified) {
+      setGuardModalOpen(true);
+      return;
+    }
     setFormError(null);
 
     // Basic validation
@@ -473,6 +479,12 @@ export default function CreateCampaignView() {
           </form>
         )}
       </AnimatePresence>
+
+      <EmailVerificationGuardModal
+        isOpen={guardModalOpen}
+        onClose={() => setGuardModalOpen(false)}
+        actionName="Marketplace Campaign Creation"
+      />
     </div>
   );
 }

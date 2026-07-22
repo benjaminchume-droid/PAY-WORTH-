@@ -25,7 +25,8 @@ import {
   PieChart,
   HelpCircle,
   FileText,
-  BadgeDollarSign
+  BadgeDollarSign,
+  ShieldAlert
 } from 'lucide-react';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -134,6 +135,24 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </button>
         </div>
       </header>
+
+      {/* PERSISTENT EMAIL VERIFICATION BANNER FOR UNVERIFIED USERS */}
+      {currentUser && !currentUser.emailVerified && (
+        <div className="sticky top-[53px] z-30 bg-gradient-to-r from-amber-950/90 via-amber-900/90 to-amber-950/90 border-b border-amber-500/30 px-4 py-2.5 flex items-center justify-between text-xs text-amber-200 backdrop-blur-md shadow-lg">
+          <div className="flex items-center gap-2.5 overflow-hidden">
+            <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0 animate-pulse" />
+            <span className="truncate">
+              <strong className="text-amber-300 font-semibold">Action Required:</strong> Please verify your email (<span className="text-white font-mono">{currentUser.email}</span>) to unlock games, tasks, withdrawals &amp; rewards.
+            </span>
+          </div>
+          <button
+            onClick={() => setActiveMenuScreen('email_verification')}
+            className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold px-3 py-1 rounded-lg text-[11px] shrink-0 ml-3 shadow-md transition-all active:scale-95 cursor-pointer"
+          >
+            Verify Now
+          </button>
+        </div>
+      )}
 
       {/* CORE VIEWPORT FOR CHILD CONTENT */}
       <main className="flex-1 overflow-y-auto relative z-10 pb-16">

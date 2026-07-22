@@ -69,7 +69,7 @@ export default function AboutView() {
             <span className="text-xs font-mono font-bold text-emerald-400">01. Join & Verify</span>
             <h3 className="text-sm font-bold text-white">Create Account</h3>
             <p className="text-[11px] text-slate-400 leading-relaxed font-sans">
-              Sign up securely with Google or email, agree to terms, and unlock your starter PWC wallet.
+              Sign up securely with email and password, verify your email address, and unlock your starter PWC wallet.
             </p>
           </div>
 

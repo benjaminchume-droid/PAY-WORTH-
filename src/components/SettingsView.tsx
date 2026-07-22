@@ -405,7 +405,7 @@ export default function SettingsView() {
               <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2 text-xs">
                 <div className="flex justify-between font-mono">
                   <span>App Version:</span>
-                  <span className="text-emerald-400 font-bold">v2.4.0 (Build 1082)</span>
+                  <span className="text-emerald-400 font-bold">v1.1.2 (Build 1120)</span>
                 </div>
                 <div className="flex justify-between font-mono">
                   <span>Legal Compliance Build:</span>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { usePayWorth } from '../engines/StateContext';
+import EmailVerificationGuardModal from './EmailVerificationGuardModal';
 import { MINING_BOT_SPECS, MEMBERSHIP_FULL_SPECS } from '../data/membershipData';
 import {
   Cpu,
@@ -24,6 +25,7 @@ export default function MiningView() {
   const { currentUser, updateMiningSession, collectMinedPwc, setActiveMenuScreen } = usePayWorth();
   const [collecting, setCollecting] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [guardModalOpen, setGuardModalOpen] = useState(false);
 
   if (!currentUser) return null;
 
@@ -51,6 +53,10 @@ export default function MiningView() {
   const storagePercent = maxStorage > 0 ? Math.min(100, Math.round((miningState.minedPwc / maxStorage) * 100)) : 0;
 
   const handleCollect = async () => {
+    if (!currentUser.emailVerified) {
+      setGuardModalOpen(true);
+      return;
+    }
     if (!botSpec || miningState.minedPwc <= 0) return;
     setCollecting(true);
     setSuccessMsg(null);
@@ -214,6 +220,12 @@ export default function MiningView() {
           </div>
         </div>
       </div>
+
+      <EmailVerificationGuardModal
+        isOpen={guardModalOpen}
+        onClose={() => setGuardModalOpen(false)}
+        actionName="Mining Rig Yield Payouts"
+      />
     </div>
   );
 }

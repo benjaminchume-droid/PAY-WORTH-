@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { usePayWorth } from '../engines/StateContext';
+import EmailVerificationGuardModal from './EmailVerificationGuardModal';
 import {
   Users,
   Copy,
@@ -19,6 +20,7 @@ export default function ReferralView() {
   const { currentUser } = usePayWorth();
   const [copied, setCopied] = useState(false);
   const [showQr, setShowQr] = useState(false);
+  const [guardModalOpen, setGuardModalOpen] = useState(false);
 
   if (!currentUser) return null;
 
@@ -27,6 +29,10 @@ export default function ReferralView() {
   const deepLink = `payworth://ref/${code}`;
 
   const handleCopy = () => {
+    if (!currentUser.emailVerified) {
+      setGuardModalOpen(true);
+      return;
+    }
     navigator.clipboard.writeText(referralUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 3000);
@@ -158,6 +164,12 @@ export default function ReferralView() {
           ))}
         </div>
       </div>
+
+      <EmailVerificationGuardModal
+        isOpen={guardModalOpen}
+        onClose={() => setGuardModalOpen(false)}
+        actionName="Referral Commissions & Network Earnings"
+      />
     </div>
   );
 }

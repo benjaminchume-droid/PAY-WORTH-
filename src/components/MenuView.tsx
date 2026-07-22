@@ -14,6 +14,7 @@ import MiningView from './MiningView';
 import GamesView from './GamesView';
 import ReferralView from './ReferralView';
 import AdminPlatformView from './AdminPlatformView';
+import EmailVerificationView from './EmailVerificationView';
 import {
   Sparkles,
   Award,
@@ -68,6 +69,10 @@ export default function MenuView() {
 
   if (activeMenuScreen === 'about') {
     return <AboutView />;
+  }
+
+  if (activeMenuScreen === 'email_verification') {
+    return <EmailVerificationView />;
   }
 
   if (activeMenuScreen === 'legal_admin') {

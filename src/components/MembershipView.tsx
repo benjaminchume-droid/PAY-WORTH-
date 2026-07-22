@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePayWorth } from '../engines/StateContext';
+import EmailVerificationGuardModal from './EmailVerificationGuardModal';
 import { MEMBERSHIP_FULL_SPECS } from '../data/membershipData';
 import { MembershipTier } from '../types';
 import {
@@ -29,6 +30,7 @@ export default function MembershipView() {
   const [activeTab, setActiveTab] = useState<'hq' | 'roadmap' | 'comparison' | 'vault'>('hq');
   const [selectedTierForUpgrade, setSelectedTierForUpgrade] = useState<MembershipTier | null>(null);
   const [upgrading, setUpgrading] = useState(false);
+  const [guardModalOpen, setGuardModalOpen] = useState(false);
 
   if (!currentUser) return null;
 
@@ -48,6 +50,10 @@ export default function MembershipView() {
   ];
 
   const handleUpgradeClick = async (tier: MembershipTier) => {
+    if (!currentUser.emailVerified) {
+      setGuardModalOpen(true);
+      return;
+    }
     clearMessages();
     setUpgrading(true);
     const res = await upgradeMembership(tier);
@@ -446,6 +452,12 @@ export default function MembershipView() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <EmailVerificationGuardModal
+        isOpen={guardModalOpen}
+        onClose={() => setGuardModalOpen(false)}
+        actionName="Membership Tier Upgrades"
+      />
     </div>
   );
 }

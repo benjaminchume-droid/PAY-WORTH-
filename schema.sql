@@ -9,7 +9,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- -------------------------------------------------------------
 
 -- Profiles Table
-CREATE TABLE IF NOT EXISTS public.users (
+CREATE TABLE IF NOT EXISTS public.profiles (
     "id" UUID PRIMARY KEY,
     "email" TEXT UNIQUE NOT NULL,
     "username" TEXT NOT NULL,
@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS public.users (
 -- Ledger / Transactions Table
 CREATE TABLE IF NOT EXISTS public.ledger (
     "id" TEXT PRIMARY KEY,
-    "userId" UUID NOT NULL REFERENCES public.users("id") ON DELETE CASCADE,
+    "userId" UUID NOT NULL REFERENCES public.profiles("id") ON DELETE CASCADE,
     "timestamp" TIMESTAMPTZ DEFAULT NOW(),
     "type" TEXT NOT NULL, -- 'credit', 'debit'
     "amount" NUMERIC NOT NULL,
@@ -84,7 +84,7 @@ CREATE TABLE IF NOT EXISTS public.tasks (
 CREATE TABLE IF NOT EXISTS public.task_submissions (
     "id" TEXT PRIMARY KEY,
     "taskId" TEXT NOT NULL REFERENCES public.tasks("id") ON DELETE CASCADE,
-    "userId" UUID NOT NULL REFERENCES public.users("id") ON DELETE CASCADE,
+    "userId" UUID NOT NULL REFERENCES public.profiles("id") ON DELETE CASCADE,
     "evidence" TEXT NOT NULL,
     "status" TEXT DEFAULT 'pending', -- 'pending', 'approved', 'rejected'
     "feedback" TEXT,
@@ -102,7 +102,7 @@ CREATE TABLE IF NOT EXISTS public.campaigns (
     "slots" INTEGER NOT NULL,
     "remainingSlots" INTEGER NOT NULL,
     "rewardPool" NUMERIC NOT NULL,
-    "creatorId" UUID NOT NULL REFERENCES public.users("id") ON DELETE CASCADE,
+    "creatorId" UUID NOT NULL REFERENCES public.profiles("id") ON DELETE CASCADE,
     "creatorName" TEXT NOT NULL,
     "trustRating" INTEGER NOT NULL,
     "deadline" TEXT NOT NULL,
@@ -116,7 +116,7 @@ CREATE TABLE IF NOT EXISTS public.campaigns (
 CREATE TABLE IF NOT EXISTS public.campaign_submissions (
     "id" TEXT PRIMARY KEY,
     "campaignId" TEXT NOT NULL REFERENCES public.campaigns("id") ON DELETE CASCADE,
-    "userId" UUID NOT NULL REFERENCES public.users("id") ON DELETE CASCADE,
+    "userId" UUID NOT NULL REFERENCES public.profiles("id") ON DELETE CASCADE,
     "textEvidence" TEXT NOT NULL,
     "evidenceUrl" TEXT,
     "status" TEXT DEFAULT 'pending',
@@ -128,7 +128,7 @@ CREATE TABLE IF NOT EXISTS public.campaign_submissions (
 -- Notifications Table
 CREATE TABLE IF NOT EXISTS public.notifications (
     "id" TEXT PRIMARY KEY,
-    "userId" UUID NOT NULL REFERENCES public.users("id") ON DELETE CASCADE,
+    "userId" UUID NOT NULL REFERENCES public.profiles("id") ON DELETE CASCADE,
     "title" TEXT NOT NULL,
     "message" TEXT NOT NULL,
     "category" TEXT NOT NULL,
@@ -139,7 +139,7 @@ CREATE TABLE IF NOT EXISTS public.notifications (
 -- Withdrawal Requests Table
 CREATE TABLE IF NOT EXISTS public.withdrawals (
     "id" TEXT PRIMARY KEY,
-    "userId" UUID NOT NULL REFERENCES public.users("id") ON DELETE CASCADE,
+    "userId" UUID NOT NULL REFERENCES public.profiles("id") ON DELETE CASCADE,
     "amount" NUMERIC NOT NULL,
     "bankName" TEXT NOT NULL,
     "accountNumber" TEXT NOT NULL,
@@ -151,7 +151,7 @@ CREATE TABLE IF NOT EXISTS public.withdrawals (
 -- Funding Requests Table
 CREATE TABLE IF NOT EXISTS public.funding_requests (
     "id" TEXT PRIMARY KEY,
-    "userId" UUID NOT NULL REFERENCES public.users("id") ON DELETE CASCADE,
+    "userId" UUID NOT NULL REFERENCES public.profiles("id") ON DELETE CASCADE,
     "amount" NUMERIC NOT NULL,
     "reason" TEXT NOT NULL,
     "status" TEXT DEFAULT 'pending',
@@ -163,8 +163,8 @@ CREATE TABLE IF NOT EXISTS public.funding_requests (
 -- Referrals Association Table
 CREATE TABLE IF NOT EXISTS public.referrals (
     "id" SERIAL PRIMARY KEY,
-    "referrerId" UUID NOT NULL REFERENCES public.users("id") ON DELETE CASCADE,
-    "referredId" UUID NOT NULL REFERENCES public.users("id") ON DELETE CASCADE,
+    "referrerId" UUID NOT NULL REFERENCES public.profiles("id") ON DELETE CASCADE,
+    "referredId" UUID NOT NULL REFERENCES public.profiles("id") ON DELETE CASCADE,
     "createdAt" TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE("referrerId", "referredId")
 );
@@ -182,7 +182,7 @@ DECLARE
 BEGIN
     LOOP
         v_acc := '412' || floor(random() * (9999999 - 1000000 + 1) + 1000000)::TEXT;
-        SELECT EXISTS(SELECT 1 FROM public.users WHERE "walletNumber" = v_acc) INTO v_exists;
+        SELECT EXISTS(SELECT 1 FROM public.profiles WHERE "walletNumber" = v_acc) INTO v_exists;
         IF NOT v_exists THEN
             RETURN v_acc;
         END IF;
@@ -203,7 +203,7 @@ BEGIN
         FOR i IN 1..6 LOOP
             v_code := v_code || substr(v_chars, floor(random() * length(v_chars) + 1)::INTEGER, 1);
         END LOOP;
-        SELECT EXISTS(SELECT 1 FROM public.users WHERE "referralCode" = v_code) INTO v_exists;
+        SELECT EXISTS(SELECT 1 FROM public.profiles WHERE "referralCode" = v_code) INTO v_exists;
         IF NOT v_exists THEN
             RETURN v_code;
         END IF;
@@ -215,7 +215,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 CREATE OR REPLACE FUNCTION public.create_wallet(p_user_id UUID)
 RETURNS VOID AS $$
 BEGIN
-    UPDATE public.users
+    UPDATE public.profiles
     SET 
         "walletNumber" = public.generate_account_number(),
         "walletStatus" = 'active',
@@ -242,7 +242,7 @@ DECLARE
     v_tx_id TEXT;
     v_balance NUMERIC;
 BEGIN
-    SELECT "pwcBalance" INTO v_balance FROM public.users WHERE "id" = p_user_id;
+    SELECT "pwcBalance" INTO v_balance FROM public.profiles WHERE "id" = p_user_id;
     v_tx_id := 'tx_' || extract(epoch from now())::TEXT || '_' || floor(random()*10000)::TEXT;
     
     INSERT INTO public.ledger (
@@ -271,7 +271,7 @@ BEGIN
         RAISE EXCEPTION 'Credit amount must be positive';
     END IF;
 
-    UPDATE public.users
+    UPDATE public.profiles
     SET 
         "pwcBalance" = "pwcBalance" + p_amount,
         "lifetimeEarned" = "lifetimeEarned" + p_amount
@@ -307,7 +307,7 @@ BEGIN
 
     SELECT "pwcBalance", "walletStatus", "dailyLimit" 
     INTO v_balance, v_status, v_limit 
-    FROM public.users WHERE "id" = p_user_id;
+    FROM public.profiles WHERE "id" = p_user_id;
 
     IF v_status != 'active' THEN
         RAISE EXCEPTION 'Wallet is not active';
@@ -317,7 +317,7 @@ BEGIN
         RAISE EXCEPTION 'Insufficient balance to complete debit';
     END IF;
 
-    UPDATE public.users
+    UPDATE public.profiles
     SET "pwcBalance" = "pwcBalance" - p_amount
     WHERE "id" = p_user_id
     RETURNING "pwcBalance" INTO v_new_balance;
@@ -342,8 +342,8 @@ DECLARE
     v_sender_username TEXT;
     v_recipient_username TEXT;
 BEGIN
-    SELECT "username" INTO v_sender_username FROM public.users WHERE "id" = p_sender_id;
-    SELECT "username" INTO v_recipient_username FROM public.users WHERE "id" = p_recipient_id;
+    SELECT "username" INTO v_sender_username FROM public.profiles WHERE "id" = p_sender_id;
+    SELECT "username" INTO v_recipient_username FROM public.profiles WHERE "id" = p_recipient_id;
 
     -- Perform debit
     PERFORM public.debit_wallet(
@@ -389,13 +389,13 @@ RETURNS BOOLEAN AS $$
 DECLARE
     v_completed TEXT[];
 BEGIN
-    SELECT "completedWelcomeCampaigns" INTO v_completed FROM public.users WHERE "id" = p_user_id;
+    SELECT "completedWelcomeCampaigns" INTO v_completed FROM public.profiles WHERE "id" = p_user_id;
     
     IF p_campaign_id = ANY(v_completed) THEN
         RETURN FALSE;
     END IF;
 
-    UPDATE public.users
+    UPDATE public.profiles
     SET 
         "completedWelcomeCampaigns" = array_append("completedWelcomeCampaigns", p_campaign_id),
         "verifiedWelcomeCampaigns" = array_append("verifiedWelcomeCampaigns", p_campaign_id)
@@ -426,7 +426,7 @@ BEGIN
     v_ref_code := public.generate_referral_code();
     v_wallet := public.generate_account_number();
 
-    INSERT INTO public.users (
+    INSERT INTO public.profiles (
         "id", "email", "username", "avatar", "referralCode", "referredBy", "walletNumber"
     ) VALUES (
         p_user_id, p_email, p_username, p_avatar, v_ref_code, p_referred_by, v_wallet
@@ -492,7 +492,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Set update triggers for tables
-CREATE TRIGGER update_users_modtime BEFORE UPDATE ON public.users FOR EACH ROW EXECUTE FUNCTION public.set_updated_at_column();
+CREATE TRIGGER update_profiles_modtime BEFORE UPDATE ON public.profiles FOR EACH ROW EXECUTE FUNCTION public.set_updated_at_column();
 CREATE TRIGGER update_tasks_modtime BEFORE UPDATE ON public.tasks FOR EACH ROW EXECUTE FUNCTION public.set_updated_at_column();
 CREATE TRIGGER update_task_submissions_modtime BEFORE UPDATE ON public.task_submissions FOR EACH ROW EXECUTE FUNCTION public.set_updated_at_column();
 CREATE TRIGGER update_campaigns_modtime BEFORE UPDATE ON public.campaigns FOR EACH ROW EXECUTE FUNCTION public.set_updated_at_column();

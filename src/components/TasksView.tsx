@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePayWorth } from '../engines/StateContext';
+import EmailVerificationGuardModal from './EmailVerificationGuardModal';
 import { Task, TaskCategory } from '../types';
 import {
   ClipboardList,
@@ -57,6 +58,7 @@ export default function TasksView() {
   const [evidenceText, setEvidenceText] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [saveList, setSaveList] = useState<string[]>([]);
+  const [guardModalOpen, setGuardModalOpen] = useState(false);
   
   // Custom non-blocking inline feedback messages
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
@@ -106,6 +108,10 @@ export default function TasksView() {
   };
 
   const handleStartTask = (task: Task) => {
+    if (!currentUser?.emailVerified) {
+      setGuardModalOpen(true);
+      return;
+    }
     if (currentUser && currentUser.trustScore < task.trustRequirement) {
       showFeedback(`Upgrade Restricted: Your Trust Rating is ${currentUser.trustScore}%, but this requires a minimum of ${task.trustRequirement}%. Complete smaller daily tasks first.`, 'error');
       return;
@@ -117,6 +123,10 @@ export default function TasksView() {
 
   const handleSubmitEvidence = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!currentUser?.emailVerified) {
+      setGuardModalOpen(true);
+      return;
+    }
     if (!activeTask || !evidenceText.trim()) return;
 
     setSubmitting(true);
@@ -897,6 +907,12 @@ export default function TasksView() {
           </div>
         )}
       </AnimatePresence>
+
+      <EmailVerificationGuardModal
+        isOpen={guardModalOpen}
+        onClose={() => setGuardModalOpen(false)}
+        actionName="Task Submissions & Micro-Task Rewards"
+      />
     </div>
   );
 }
