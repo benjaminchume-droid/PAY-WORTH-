@@ -5,6 +5,15 @@ import { MEMBERSHIP_TIERS_DATA, DEFAULT_ACHIEVEMENTS } from '../engines/storage'
 import { User, MembershipTier } from '../types';
 import MiniGames from './MiniGames';
 import CreateCampaignView from './CreateCampaignView';
+import LegalCenterView from './LegalCenterView';
+import SettingsView from './SettingsView';
+import AboutView from './AboutView';
+import AdminLegalDashboard from './AdminLegalDashboard';
+import MembershipView from './MembershipView';
+import MiningView from './MiningView';
+import GamesView from './GamesView';
+import ReferralView from './ReferralView';
+import AdminPlatformView from './AdminPlatformView';
 import {
   Sparkles,
   Award,
@@ -34,6 +43,37 @@ export default function MenuView() {
 
   if (!activeMenuScreen) return null;
 
+  const legalScreenMap: Record<string, string> = {
+    terms: 'terms-of-service',
+    privacy: 'privacy-policy',
+    community: 'community-guidelines',
+    acceptable_use: 'acceptable-use-policy',
+    reward_policy: 'reward-withdrawal-policy',
+    kyc: 'kyc-aml-policy',
+    cookies: 'cookie-policy'
+  };
+
+  if (activeMenuScreen === 'legal_center' || legalScreenMap[activeMenuScreen]) {
+    return (
+      <LegalCenterView
+        initialDocId={legalScreenMap[activeMenuScreen] || 'terms'}
+        onClose={() => setActiveMenuScreen(null)}
+      />
+    );
+  }
+
+  if (activeMenuScreen === 'settings') {
+    return <SettingsView />;
+  }
+
+  if (activeMenuScreen === 'about') {
+    return <AboutView />;
+  }
+
+  if (activeMenuScreen === 'legal_admin') {
+    return <AdminLegalDashboard />;
+  }
+
   return (
     <div className="p-4 max-w-lg mx-auto pb-24 space-y-4">
       {/* Return header */}
@@ -51,19 +91,19 @@ export default function MenuView() {
 
       {activeMenuScreen === 'create_campaign' && <CreateCampaignView />}
       {activeMenuScreen === 'membership' && <MembershipView />}
+      {activeMenuScreen === 'mining' && <MiningView />}
+      {activeMenuScreen === 'games' && <GamesView />}
+      {activeMenuScreen === 'referrals' && <ReferralView />}
       {activeMenuScreen === 'leaderboard' && <LeaderboardView />}
       {activeMenuScreen === 'wheel' && <LuckyWheelView />}
       {activeMenuScreen === 'achievements' && <AchievementsView />}
-      {activeMenuScreen === 'referrals' && <ReferralsView />}
       {activeMenuScreen === 'payfunds' && <PayFundsView />}
       {activeMenuScreen === 'statistics' && <StatisticsView />}
       {activeMenuScreen === 'notifications' && <NotificationsView />}
-      {activeMenuScreen === 'settings' && <SettingsView />}
-      {activeMenuScreen === 'games' && <MiniGames />}
-      {activeMenuScreen === 'dashboard' && <AdminDashboardView />}
+      {(activeMenuScreen === 'dashboard' || activeMenuScreen === 'admin') && <AdminPlatformView />}
 
       {/* Static Info footers */}
-      {['profile', 'help', 'privacy', 'terms', 'about', 'contact', 'security'].includes(activeMenuScreen) && (
+      {['profile', 'help', 'contact', 'security'].includes(activeMenuScreen) && (
         <StaticInfoView page={activeMenuScreen} />
       )}
     </div>
@@ -71,9 +111,9 @@ export default function MenuView() {
 }
 
 /* ==========================================================================
-   MEMBERSHIP VIEW
+   LEGACY MEMBERSHIP VIEW
    ========================================================================== */
-function MembershipView() {
+function LegacyMembershipView() {
   const {
     currentUser,
     upgradeMembership,
@@ -938,129 +978,6 @@ function NotificationsView() {
             </div>
           ))
         )}
-      </div>
-    </div>
-  );
-}
-
-/* ==========================================================================
-   SETTINGS VIEW
-   ========================================================================== */
-function SettingsView() {
-  const { currentUser, verifyEmail, state, error, successMessage, clearMessages, submitKyc } = usePayWorth();
-  const [kycOption, setKycOption] = useState<'ID' | 'Passport' | 'Drivers'>('ID');
-  const [kycFile, setKycFile] = useState('');
-  const [kycLoading, setKycLoading] = useState(false);
-  const [kycVerified, setKycVerified] = useState(currentUser?.kycStatus === 'verified');
-
-  const handleKycSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!kycFile.trim()) return;
-
-    setKycLoading(true);
-    const success = await submitKyc(`${kycOption}-${kycFile}`);
-    if (success) {
-      setKycVerified(true);
-      alert('KYC Credentials successfully validated and cleared! Trust Rating boosted by +25.');
-    } else {
-      alert('KYC submission failed. Please try again.');
-    }
-    setKycLoading(false);
-  };
-
-  return (
-    <div className="space-y-4">
-      <div className="mb-2">
-        <h3 className="text-xl font-bold text-white flex items-center gap-2">
-          <Sliders className="text-emerald-400 w-5.5 h-5.5" /> Engine Settings
-        </h3>
-        <p className="text-xs text-slate-400 mt-1">
-          Bypass verifications, edit theme variables, or upload KYC identification to unlock core withdrawal limits.
-        </p>
-      </div>
-
-      {/* KYC identity box */}
-      <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-3.5">
-        <h4 className="text-xs font-mono uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
-          <Shield className="w-4 h-4 text-emerald-400" /> KYC Security Clearance
-        </h4>
-        <p className="text-xs text-slate-400">
-          Upload photo identification to clear bot-prevention parameters. Unlocks Diamond upgrades and wire withdrawals.
-        </p>
-
-        {kycVerified ? (
-          <div className="p-3 bg-emerald-500/10 border border-emerald-500/15 rounded-xl flex items-center gap-3 text-emerald-400">
-            <UserCheck className="w-6 h-6" />
-            <div>
-              <h5 className="text-xs font-bold font-sans">Identity Cleared & Verified</h5>
-              <p className="text-[10px] text-emerald-300">Your profile ledger status is cleared for global deposits & withdrawals.</p>
-            </div>
-          </div>
-        ) : (
-          <form onSubmit={handleKycSubmit} className="space-y-3 pt-2">
-            <div className="grid grid-cols-3 gap-2 text-center">
-              {['ID', 'Passport', 'Drivers'].map((opt) => (
-                <button
-                  key={opt}
-                  type="button"
-                  onClick={() => setKycOption(opt as any)}
-                  className={`text-[10px] py-2 rounded-xl border transition-all font-semibold ${
-                    kycOption === opt
-                      ? 'bg-emerald-500 text-slate-950 border-emerald-500'
-                      : 'border-white/5 bg-white/2 text-slate-400 hover:text-white'
-                  }`}
-                >
-                  {opt} CARD
-                </button>
-              ))}
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[9px] text-slate-500 font-mono uppercase block">Doc Reference Number or Hash</label>
-              <input
-                type="text"
-                value={kycFile}
-                onChange={(e) => setKycFile(e.target.value)}
-                placeholder="e.g. US-DOC998412450A"
-                required
-                className="w-full bg-black/40 border border-white/5 outline-none text-white text-xs p-2.5 rounded-xl font-mono"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={kycLoading}
-              className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs py-2.5 rounded-xl transition-all shadow-md"
-            >
-              {kycLoading ? 'Encrypting Documents...' : 'Submit Verification Docs'}
-            </button>
-          </form>
-        )}
-      </div>
-
-      {/* Security Info and Verification */}
-      <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-3.5">
-        <h4 className="text-xs font-mono uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
-          <ShieldCheck className="w-4 h-4 text-emerald-400" /> Security Logins Info
-        </h4>
-        <div className="text-xs text-slate-300 space-y-2 font-sans leading-normal">
-          <div className="flex justify-between text-[11px] bg-black/25 p-2 rounded-lg">
-            <span>Verify Status:</span>
-            <span className={currentUser?.emailVerified ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>
-              {currentUser?.emailVerified ? 'Email Verified' : 'Pending Verification'}
-            </span>
-          </div>
-
-          <div className="flex justify-between text-[11px] bg-black/25 p-2 rounded-lg">
-            <span>2FA Protection:</span>
-            <span className="text-emerald-400 font-bold">Enabled (System Active)</span>
-          </div>
-
-          <div className="flex justify-between text-[11px] bg-black/25 p-2 rounded-lg">
-            <span>Simulated Device Fingerprint:</span>
-            <span className="text-slate-400 font-mono">PW-SHA256-DVC-CLIENT-99X</span>
-          </div>
-        </div>
       </div>
     </div>
   );

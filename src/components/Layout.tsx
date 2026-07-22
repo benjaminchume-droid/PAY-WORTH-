@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePayWorth } from '../engines/StateContext';
+import Footer from './Footer';
+import CookieBanner from './CookieBanner';
 import {
   Menu,
   MoreVertical,
@@ -50,6 +52,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   const menuItems = [
     { id: 'dashboard', label: 'Admin Panel', icon: Sliders, requiresAdmin: true },
+    { id: 'legal_admin', label: 'Legal Operations', icon: ShieldCheck, requiresAdmin: true },
+    { id: 'legal_center', label: 'Legal Center', icon: FileText },
     { id: 'membership', label: 'Membership Tiers', icon: Sparkles },
     { id: 'create_campaign', label: 'Start Campaign', icon: BadgeDollarSign },
     { id: 'leaderboard', label: 'Leaderboards', icon: Trophy },
@@ -65,6 +69,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   const rightItems = [
     { id: 'profile', label: 'My Profile', icon: User },
+    { id: 'legal_center', label: 'Legal Repository', icon: FileText },
     { id: 'help', label: 'System Help Center', icon: HelpCircle },
     { id: 'privacy', label: 'Privacy Standards', icon: ShieldCheck },
     { id: 'terms', label: 'Terms of Use', icon: FileText },
@@ -131,9 +136,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       </header>
 
       {/* CORE VIEWPORT FOR CHILD CONTENT */}
-      <main className="flex-1 overflow-y-auto relative z-10">
+      <main className="flex-1 overflow-y-auto relative z-10 pb-16">
         {children}
+        <Footer />
       </main>
+
+      {/* Cookie Preferences Banner */}
+      <CookieBanner />
 
       {/* PERSISTENT BOTTOM NAVIGATION */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 bg-slate-950/85 backdrop-blur-xl border-t border-white/5 py-2 px-6 flex items-center justify-around">

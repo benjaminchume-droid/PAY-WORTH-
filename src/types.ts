@@ -5,7 +5,8 @@ export type MembershipTier =
   | 'Shimmering Gold'
   | 'Aspiring Platinum'
   | 'Resilient Diamond'
-  | 'Epic Legend'
+  | 'Epic'
+  | 'Legend'
   | 'Mythical';
 
 export interface User {
@@ -51,6 +52,121 @@ export interface User {
   monthlyLimit: number;
   spendingLimit: number;
   walletLevel: number;
+  currentStreak?: number;
+  lastStreakDate?: string;
+  inventory?: InventoryItem[];
+  miningState?: MiningSession;
+  legalAcceptedVersion?: string;
+}
+
+export interface InventoryItem {
+  id: string;
+  name: string;
+  type: 'booster' | 'frame' | 'theme' | 'title' | 'coupon' | 'chest';
+  description: string;
+  quantity: number;
+  acquiredAt: string;
+  expiresAt?: string;
+  iconName?: string;
+}
+
+export interface MiningBot {
+  tierRequired: MembershipTier;
+  botName: string;
+  model: string;
+  speedPwcPerHour: number;
+  multiplier: number;
+  maxStoragePwc: number;
+  collectionIntervalMinutes: number;
+  maxDurationHours: number;
+  accentColor: string;
+  bgGradient: string;
+  headquartersName: string;
+  hqDescription: string;
+  modules: string[];
+}
+
+export interface MiningSession {
+  botName: string;
+  tier: MembershipTier;
+  startedAt: string;
+  lastCollectedAt: string;
+  minedPwc: number;
+  status: 'active' | 'storage_full' | 'idle';
+  activeBoosters: string[];
+  totalCollectedLifetime: number;
+}
+
+export interface MiningModule {
+  id: string;
+  name: string;
+  type: 'core' | 'processor' | 'cooling' | 'power' | 'ai';
+  boostPercentage: number;
+  level: number;
+  unlockedAtTier: MembershipTier;
+}
+
+export type GameCategory =
+  | 'Arcade'
+  | 'Puzzle'
+  | 'Trivia'
+  | 'Strategy'
+  | 'Reflex'
+  | 'Memory'
+  | 'Board'
+  | 'Card'
+  | 'Word'
+  | 'Racing'
+  | 'Adventure'
+  | 'Casual'
+  | 'Skill'
+  | 'Tournament'
+  | 'Seasonal';
+
+export interface CatalogGame {
+  id: string;
+  title: string;
+  category: GameCategory;
+  description: string;
+  minTier: MembershipTier;
+  baseRewardPwc: number;
+  xpReward: number;
+  playsRemainingToday: number;
+  maxDailyPlays: number;
+  icon: string;
+  isHot?: boolean;
+  isNew?: boolean;
+  difficulty: 'Easy' | 'Medium' | 'Hard' | 'Expert';
+}
+
+export interface ReferralStat {
+  code: string;
+  url: string;
+  deepLink: string;
+  totalClicks: number;
+  totalSignups: number;
+  qualifiedReferrals: number;
+  premiumReferrals: number;
+  totalEarningsPwc: number;
+  pendingEarningsPwc: number;
+  riskScore: number; // 0 - 100
+  holdingPeriodDays: number;
+}
+
+export interface ReferralRecord {
+  id: string;
+  referredUserId: string;
+  referredUserName: string;
+  referredUserEmail: string;
+  joinedAt: string;
+  type: 'standard' | 'premium';
+  tierPurchased?: MembershipTier;
+  rewardPwc: number;
+  status: 'visited' | 'signed_up' | 'qualified' | 'pending' | 'approved' | 'rejected' | 'fraud';
+  releaseDate: string;
+  riskScore: number;
+  ipAddress?: string;
+  country?: string;
 }
 
 export interface LedgerEntry {

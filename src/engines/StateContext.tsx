@@ -20,6 +20,8 @@ interface StateContextType {
   currentUser: User | null;
   error: string | null;
   successMessage: string | null;
+  isPasswordRecovery: boolean;
+  setIsPasswordRecovery: (val: boolean) => void;
   activeTab: 'home' | 'tasks' | 'wallet' | 'marketplace';
   setActiveTab: (tab: 'home' | 'tasks' | 'wallet' | 'marketplace') => void;
   activeMenuScreen: string | null;
@@ -30,6 +32,9 @@ interface StateContextType {
   signup: (email: string, password: string, username: string, referralCode?: string) => Promise<boolean>;
   logout: () => Promise<void>;
   forgotPassword: (email: string) => Promise<void>;
+  updatePassword: (newPassword: string) => Promise<boolean>;
+  resendVerificationEmail: (targetEmail?: string) => Promise<boolean>;
+  refreshUserSession: () => Promise<void>;
   verifyEmail: () => Promise<boolean>;
   loginWithGoogle: () => Promise<boolean>;
   onboardingComplete: () => Promise<void>;
@@ -69,6 +74,7 @@ interface StateContextType {
   
   // Helpers
   clearMessages: () => void;
+  collectMinedPwc: () => Promise<boolean>;
 }
 
 const StateContext = createContext<StateContextType | undefined>(undefined);
@@ -157,9 +163,15 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState<boolean>(false);
+
   // Auth Session State Synchronizer
   useEffect(() => {
     let active = true;
+
+    if (window.location.hash.includes('type=recovery') || window.location.hash.includes('access_token')) {
+      setIsPasswordRecovery(true);
+    }
 
     const setupAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -173,6 +185,9 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (!active) return;
+        if (event === 'PASSWORD_RECOVERY') {
+          setIsPasswordRecovery(true);
+        }
         const user = session?.user;
         if (user) {
           await fetchAppData(user.id);
@@ -200,13 +215,39 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  // Helper for human-readable error messages
+  const parseAuthError = (err: any): string => {
+    if (!err) return 'An unexpected authentication error occurred.';
+    const msg = typeof err === 'string' ? err : err.message || '';
+    if (msg.includes('Invalid login credentials')) {
+      return 'Invalid email or password. Please check your credentials and try again.';
+    }
+    if (msg.includes('Email not confirmed')) {
+      return 'Your email address is not verified yet. Please check your inbox or resend the verification code.';
+    }
+    if (msg.includes('User already registered') || msg.includes('already exists')) {
+      return 'An account with this email address already exists. Please log in instead.';
+    }
+    if (msg.includes('Password should be at least')) {
+      return 'Password must be at least 8 characters in length.';
+    }
+    if (msg.includes('rate limit') || msg.includes('too many requests') || msg.includes('429')) {
+      return 'Security rate limit reached. Please wait a moment before trying again.';
+    }
+    return msg || 'Authentication request failed. Please try again.';
+  };
+
   // 1. Log In Wrapper
   const login = async (email: string, password: string): Promise<boolean> => {
     setLoading(true);
     clearMessages();
     try {
+      if (!email.trim() || !password) {
+        setError('Please enter both email and password.');
+        return false;
+      }
       const { data, error: authErr } = await supabase.auth.signInWithPassword({
-        email,
+        email: email.trim(),
         password,
       });
 
@@ -218,7 +259,7 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
       return true;
     } catch (err: any) {
       console.error(err);
-      setError(err.message || 'Unable to connect to PayWorth services. Please try again.');
+      setError(parseAuthError(err));
       return false;
     } finally {
       setLoading(false);
@@ -230,26 +271,40 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     clearMessages();
     try {
+      if (!email.trim() || !password || !username.trim()) {
+        setError('Please fill in all required registration fields.');
+        return false;
+      }
+      if (username.trim().length < 3) {
+        setError('Username must be at least 3 characters in length.');
+        return false;
+      }
+      if (password.length < 8) {
+        setError('Password must be at least 8 characters in length.');
+        return false;
+      }
+
       let referredBy: string | null = null;
-      if (referralCode) {
+      if (referralCode && referralCode.trim()) {
         const { data: refUser, error: refErr } = await supabase
           .from('users')
           .select('id')
-          .eq('referralCode', referralCode.toUpperCase())
+          .eq('referralCode', referralCode.trim().toUpperCase())
           .maybeSingle();
 
         if (refUser && !refErr) {
           referredBy = refUser.id;
         } else {
-          setError('Referral code was not found. Please verify details or leave blank.');
+          setError('Referral code was not found. Please check or leave blank.');
           return false;
         }
       }
 
       const { data, error: authErr } = await supabase.auth.signUp({
-        email,
+        email: email.trim(),
         password,
         options: {
+          emailRedirectTo: window.location.origin,
           data: {
             username: username.trim(),
             referredBy,
@@ -261,11 +316,15 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
       if (authErr) throw authErr;
       if (!data.user) throw new Error('Sign up failure.');
 
-      setSuccessMessage('Profile registered successfully! Check email credentials.');
+      if (data.session?.user) {
+        await fetchAppData(data.session.user.id);
+      }
+
+      setSuccessMessage('Account registered successfully! Please check your email for the verification link.');
       return true;
     } catch (err: any) {
       console.error(err);
-      setError(err.message || 'Unable to connect to PayWorth services. Please try again.');
+      setError(parseAuthError(err));
       return false;
     } finally {
       setLoading(false);
@@ -280,6 +339,7 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
     } catch (err) {
       console.error('Logout error:', err);
     } finally {
+      setIsPasswordRecovery(false);
       setAppState({
         users: {},
         currentUser: null,
@@ -300,32 +360,97 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
   // 4. Forgot Password Wrapper
   const forgotPassword = async (email: string) => {
     setLoading(true);
+    clearMessages();
     try {
-      const { error: resetErr } = await supabase.auth.resetPasswordForEmail(email, {
+      if (!email.trim()) {
+        setError('Please enter your email address.');
+        return;
+      }
+      const { error: resetErr } = await supabase.auth.resetPasswordForEmail(email.trim(), {
         redirectTo: window.location.origin,
       });
       if (resetErr) throw resetErr;
-      setSuccessMessage(`Password recovery credentials dispatched to: ${email}`);
+      setSuccessMessage(`Password recovery instructions sent to: ${email}`);
     } catch (err: any) {
       console.error(err);
-      setError(err.message || 'Error dispatching password reset credentials.');
+      setError(parseAuthError(err));
     } finally {
       setLoading(false);
     }
   };
 
-  // 5. Verify Email Verification Check
-  const verifyEmail = async (): Promise<boolean> => {
+  // 5. Update Password (When in recovery mode)
+  const updatePassword = async (newPassword: string): Promise<boolean> => {
     setLoading(true);
+    clearMessages();
     try {
-      setSuccessMessage('A verification link has been dispatched to your email address.');
+      if (!newPassword || newPassword.length < 8) {
+        setError('Password must be at least 8 characters long.');
+        return false;
+      }
+      const { error: updateErr } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+      if (updateErr) throw updateErr;
+      setIsPasswordRecovery(false);
+      setSuccessMessage('Password updated successfully! You can now log in with your new credentials.');
       return true;
     } catch (err: any) {
-      setError(err.message || 'Error processing email verification.');
+      console.error(err);
+      setError(parseAuthError(err));
       return false;
     } finally {
       setLoading(false);
     }
+  };
+
+  // 6. Resend Verification Email
+  const resendVerificationEmail = async (targetEmail?: string): Promise<boolean> => {
+    setLoading(true);
+    clearMessages();
+    try {
+      const emailToSend = targetEmail || appState.currentUser?.email;
+      if (!emailToSend) {
+        setError('No email address found to resend verification.');
+        return false;
+      }
+      const { error: resendErr } = await supabase.auth.resend({
+        type: 'signup',
+        email: emailToSend,
+        options: {
+          emailRedirectTo: window.location.origin,
+        }
+      });
+      if (resendErr) throw resendErr;
+      setSuccessMessage(`Verification email sent to ${emailToSend}. Please check your inbox and spam folder.`);
+      return true;
+    } catch (err: any) {
+      console.error(err);
+      setError(parseAuthError(err));
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 7. Refresh User Session (check if email verified)
+  const refreshUserSession = async () => {
+    setLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await fetchAppData(user.id);
+        setSuccessMessage('Session updated.');
+      }
+    } catch (err: any) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const verifyEmail = async (): Promise<boolean> => {
+    return await resendVerificationEmail();
   };
 
   // 6. Sign In With Google Wrapper
@@ -1297,6 +1422,50 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const collectMinedPwc = async (): Promise<boolean> => {
+    if (!appState.currentUser) return false;
+    setLoading(true);
+    try {
+      const currentMined = appState.currentUser.miningState?.minedPwc || 15.5;
+      if (currentMined <= 0) return false;
+
+      await supabase.rpc('credit_wallet', {
+        p_user_id: appState.currentUser.id,
+        p_amount: currentMined,
+        p_description: 'Collected PWC Mining Bot Yield',
+        p_category: 'daily_reward'
+      });
+
+      const updatedMiningState = {
+        ...(appState.currentUser.miningState || {
+          botName: 'Active Bot',
+          tier: appState.currentUser.membershipTier,
+          startedAt: new Date().toISOString(),
+          status: 'active' as const,
+          activeBoosters: []
+        }),
+        lastCollectedAt: new Date().toISOString(),
+        minedPwc: 0,
+        totalCollectedLifetime: ((appState.currentUser.miningState?.totalCollectedLifetime || 0) + currentMined)
+      };
+
+      await supabase
+        .from('users')
+        .update({ miningState: updatedMiningState })
+        .eq('id', appState.currentUser.id);
+
+      await fetchAppData(appState.currentUser.id);
+      setSuccessMessage(`Successfully collected +${currentMined.toFixed(1)} PWC into main wallet!`);
+      return true;
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'Unable to collect mining yield. Please try again.');
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <StateContext.Provider
       value={{
@@ -1305,6 +1474,8 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
         currentUser: appState.currentUser,
         error,
         successMessage,
+        isPasswordRecovery,
+        setIsPasswordRecovery,
         activeTab,
         setActiveTab,
         activeMenuScreen,
@@ -1313,6 +1484,9 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
         signup,
         logout,
         forgotPassword,
+        updatePassword,
+        resendVerificationEmail,
+        refreshUserSession,
         verifyEmail,
         loginWithGoogle,
         onboardingComplete,
@@ -1348,6 +1522,7 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
         adminApproveCampaign,
         adminReviewTaskSubmission,
         clearMessages,
+        collectMinedPwc,
       }}
     >
       {children}

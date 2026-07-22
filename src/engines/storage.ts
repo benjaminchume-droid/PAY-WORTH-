@@ -70,12 +70,20 @@ export const MEMBERSHIP_TIERS_DATA: Array<{
     benefits: ['2.2x Earning Multiplier', 'Zero Withdrawal Fees', 'Diamond Profile Ring'],
   },
   {
-    name: 'Epic Legend',
-    multiplier: 3.0,
+    name: 'Epic',
+    multiplier: 2.8,
+    cost: 12000,
+    minLevel: 15,
+    minTrust: 90,
+    benefits: ['2.8x Earning Multiplier', 'Sponsored Campaigns', 'Epic Animated Avatar Ring'],
+  },
+  {
+    name: 'Legend',
+    multiplier: 3.5,
     cost: 30000,
     minLevel: 20,
     minTrust: 95,
-    benefits: ['3.0x Earning Multiplier', 'Instant Settlement Guarantee', 'Legendary Badge & Special Avatar Ring'],
+    benefits: ['3.5x Earning Multiplier', 'Instant Settlement Guarantee', 'Legendary Badge & Special Avatar Ring'],
   },
   {
     name: 'Mythical',
