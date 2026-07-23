@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePayWorth } from '../engines/StateContext';
 import { generateReadableUsername, saveOnboardingDraft, getOnboardingDraft } from '../lib/draftRecovery';
+import { checkUsernameUniquenessRealtime } from '../lib/usernameCheck';
 import { Coins, ShieldAlert, Award, ArrowRight, ArrowLeft, Layers, Trophy, UserCheck, AlertCircle, Sparkles, CheckCircle } from 'lucide-react';
 
 export default function Onboarding() {
@@ -98,10 +99,13 @@ export default function Onboarding() {
     setProfileError(null);
     if (val.trim().length >= 3) {
       setCheckingUsername(true);
-      const res = await checkUsernameAvailability(val);
+      const res = await checkUsernameUniquenessRealtime(val, currentUser?.id);
       setCheckingUsername(false);
-      setUsernameAvailable(res.available);
+      setUsernameAvailable(res.isAvailable);
       setSuggestions(res.suggestions || []);
+      if (!res.isAvailable) {
+        setProfileError(res.message);
+      }
     } else {
       setUsernameAvailable(null);
       setSuggestions([]);

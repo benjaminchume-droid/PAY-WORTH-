@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { usePayWorth } from '../engines/StateContext';
 import Footer from './Footer';
 import CookieBanner from './CookieBanner';
+import OfflineSyncStatusBadge from './OfflineSyncStatusBadge';
 import {
   Menu,
   MoreVertical,
@@ -106,7 +107,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </div>
 
         {/* Balance Counter and Profile Options */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
+          <OfflineSyncStatusBadge compact />
+
           {currentUser ? (
             <div
               onClick={() => { setActiveMenuScreen(null); setActiveTab('wallet'); }}

@@ -21,6 +21,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import TransactionPinModal from './TransactionPinModal';
+import PasswordStrengthValidator, { evaluatePasswordStrength } from './PasswordStrengthValidator';
 
 export default function SecurityCenterView() {
   const {
@@ -75,8 +76,9 @@ export default function SecurityCenterView() {
     setPwSuccess(null);
     clearMessages();
 
-    if (newPassword.length < 8) {
-      setPwLocalError('New password must be at least 8 characters long.');
+    const strength = evaluatePasswordStrength(newPassword);
+    if (!strength.isValid) {
+      setPwLocalError('New password must contain at least 8 characters, one number (0-9), and one special character (!@#...).');
       return;
     }
 
@@ -329,10 +331,11 @@ export default function SecurityCenterView() {
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="Minimum 8 characters"
+              placeholder="At least 8 chars, 1 number & 1 symbol"
               required
               className="w-full bg-slate-950/80 border border-white/10 focus:border-emerald-500 outline-none text-white text-xs px-3.5 py-2.5 rounded-xl"
             />
+            <PasswordStrengthValidator password={newPassword} />
           </div>
 
           <div className="space-y-1">

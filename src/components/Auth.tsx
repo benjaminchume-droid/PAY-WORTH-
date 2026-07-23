@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { usePayWorth } from '../engines/StateContext';
 import { Coins, LogIn, UserPlus, Mail, ShieldAlert, Lock, RefreshCw, KeyRound } from 'lucide-react';
 import EmailOTPVerification from './EmailOTPVerification';
+import PasswordStrengthValidator, { evaluatePasswordStrength } from './PasswordStrengthValidator';
 
 export default function Auth() {
   const {
@@ -92,8 +93,9 @@ export default function Auth() {
       return;
     }
 
-    if (password.length < 8) {
-      setLocalError('Password must be at least 8 characters long.');
+    const strength = evaluatePasswordStrength(password);
+    if (!strength.isValid) {
+      setLocalError('Password must contain at least 8 characters, one number (0-9), and one special character (!@#...).');
       return;
     }
 
@@ -313,11 +315,12 @@ export default function Auth() {
                       type="password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Minimum 8 characters"
+                      placeholder="At least 8 chars, 1 number & 1 symbol"
                       required
                       className="w-full bg-white/2 hover:bg-white/5 focus:bg-black/20 border border-white/5 focus:border-emerald-500/40 outline-none text-white text-xs px-10 py-3 rounded-xl transition-all"
                     />
                   </div>
+                  <PasswordStrengthValidator password={password} />
                 </div>
 
                 <div className="space-y-1">
