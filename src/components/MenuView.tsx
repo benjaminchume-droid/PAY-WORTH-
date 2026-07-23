@@ -418,7 +418,7 @@ function LegacyMembershipView() {
 /* ==========================================================================
    LEADERBOARDS VIEW
    ========================================================================== */
-function LeaderboardView() {
+export function LeaderboardView() {
   const { state } = usePayWorth();
 
   // Sort and compile mock-but-live global players
@@ -485,7 +485,7 @@ function LeaderboardView() {
 /* ==========================================================================
    LUCKY WHEEL VIEW
    ========================================================================== */
-function LuckyWheelView() {
+export function LuckyWheelView() {
   const { currentUser, spinLuckyWheel, error, successMessage, clearMessages } = usePayWorth();
   const [spinning, setSpinning] = useState(false);
   const [spinResult, setSpinResult] = useState<{ prize: string; type: string } | null>(null);
@@ -578,7 +578,7 @@ function LuckyWheelView() {
 /* ==========================================================================
    ACHIEVEMENTS VIEW
    ========================================================================== */
-function AchievementsView() {
+export function AchievementsView() {
   const { currentUser, claimAchievement, state } = usePayWorth();
   const [claiming, setClaiming] = useState<string | null>(null);
 
@@ -678,7 +678,7 @@ function AchievementsView() {
 /* ==========================================================================
    REFERRALS VIEW
    ========================================================================== */
-function ReferralsView() {
+export function ReferralsView() {
   const { currentUser, state } = usePayWorth();
   const [copied, setCopied] = useState(false);
 
@@ -754,7 +754,7 @@ function ReferralsView() {
 /* ==========================================================================
    PAY FUNDS VIEW
    ========================================================================== */
-function PayFundsView() {
+export function PayFundsView() {
   const { currentUser, submitFundingRequest, state, error, successMessage, clearMessages } = usePayWorth();
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
@@ -860,7 +860,7 @@ function PayFundsView() {
 /* ==========================================================================
    STATISTICS VIEW
    ========================================================================== */
-function StatisticsView() {
+export function StatisticsView() {
   const { currentUser, state } = usePayWorth();
   const historyList = currentUser ? (state.ledger[currentUser.id] || []) : [];
 
@@ -938,7 +938,7 @@ function StatisticsView() {
 /* ==========================================================================
    NOTIFICATIONS VIEW
    ========================================================================== */
-function NotificationsView() {
+export function NotificationsView() {
   const { currentUser, state, markNotificationRead, clearNotifications } = usePayWorth();
   const list = currentUser ? (state.notifications[currentUser.id] || []) : [];
 
@@ -1276,7 +1276,7 @@ function AdminDashboardView() {
 /* ==========================================================================
    STATIC INFO VIEW
    ========================================================================== */
-function StaticInfoView({ page }: { page: string }) {
+export function StaticInfoView({ page }: { page: string }) {
   const { currentUser, verifyEmail, state } = usePayWorth();
   const [contactName, setContactName] = useState('');
   const [contactEmail, setContactEmail] = useState(currentUser?.email || '');

@@ -163,13 +163,17 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
   const retryInitialization = async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.user) {
-      await fetchAppData(session.user.id);
+      await fetchAppData(session.user.id, true);
+    } else {
+      setIsInitializingAccount(false);
     }
   };
 
-  const fetchAppData = async (userId: string) => {
-    setIsInitializingAccount(true);
-    setInitializationError(null);
+  const fetchAppData = async (userId: string, isInitialLoad = false) => {
+    if (isInitialLoad || !appState.currentUser) {
+      setIsInitializingAccount(true);
+      setInitializationError(null);
+    }
     try {
       let { data: rawProfile, error: userError } = await supabase
         .from('profiles')
@@ -257,16 +261,30 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
       const effectiveVerified = isAuthVerified || userProfile.emailVerified || false;
 
       if (effectiveVerified && !userProfile.emailVerified) {
-        try {
-          await supabase.from('profiles').update({ emailVerified: true }).eq('id', userId);
-        } catch (e) {
-          console.warn('Email verified flag update note:', e);
-        }
         userProfile.emailVerified = true;
+        (async () => {
+          try {
+            await supabase.from('profiles').update({ emailVerified: true }).eq('id', userId);
+          } catch {}
+        })();
       } else {
         userProfile.emailVerified = effectiveVerified;
       }
 
+      const userMap: Record<string, User> = {
+        [userProfile.email.toLowerCase()]: userProfile as User,
+        [userProfile.id]: userProfile as User,
+      };
+
+      // Immediately set currentUser and release initialization lock
+      setAppState((prev) => ({
+        ...prev,
+        users: { ...prev.users, ...userMap },
+        currentUser: userProfile as User,
+      }));
+      setIsInitializingAccount(false);
+
+      // Asynchronously load secondary collections in background without blocking entry
       const safeQuery = async <T,>(queryPromise: PromiseLike<{ data: T[] | null; error: any }>): Promise<T[]> => {
         try {
           const res = await queryPromise;
@@ -276,17 +294,7 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
         }
       };
 
-      const [
-        ledgerData,
-        tasksData,
-        submissionsData,
-        campaignsData,
-        campSubmissionsData,
-        notificationsData,
-        withdrawalsData,
-        fundingData,
-        referralsData
-      ] = await Promise.all([
+      Promise.all([
         safeQuery<LedgerEntry>(supabase.from('ledger').select('*').eq('userId', userId).order('timestamp', { ascending: false })),
         safeQuery<Task>(supabase.from('tasks').select('*')),
         safeQuery<TaskSubmission>(supabase.from('task_submissions').select('*').eq('userId', userId)),
@@ -296,28 +304,33 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
         safeQuery<WithdrawalRequest>(supabase.from('withdrawals').select('*').eq('userId', userId).order('createdAt', { ascending: false })),
         safeQuery<FundingRequest>(supabase.from('funding_requests').select('*').eq('userId', userId).order('createdAt', { ascending: false })),
         safeQuery<any>(supabase.from('referrals').select('*').eq('referrerId', userId)),
-      ]);
-
-      const userNotifs = (notificationsData || []) as Notification[];
-      const userMap: Record<string, User> = {
-        [userProfile.email.toLowerCase()]: userProfile as User,
-        [userProfile.id]: userProfile as User,
-      };
-
-      setAppState({
-        users: userMap,
-        currentUser: userProfile as User,
-        ledger: { [userId]: (ledgerData || []) as LedgerEntry[] },
-        tasks: (tasksData || []) as Task[],
-        taskSubmissions: (submissionsData || []) as TaskSubmission[],
-        campaigns: (campaignsData || []) as Campaign[],
-        campaignSubmissions: (campSubmissionsData || []) as CampaignSubmission[],
-        notifications: { [userId]: userNotifs },
-        withdrawals: (withdrawalsData || []) as WithdrawalRequest[],
-        fundingRequests: (fundingData || []) as FundingRequest[],
-        referrals: { [userId]: (referralsData || []).map((r: any) => r.referredId) },
+      ]).then(([
+        ledgerData,
+        tasksData,
+        submissionsData,
+        campaignsData,
+        campSubmissionsData,
+        notificationsData,
+        withdrawalsData,
+        fundingData,
+        referralsData
+      ]) => {
+        const userNotifs = (notificationsData || []) as Notification[];
+        setAppState((prev) => ({
+          ...prev,
+          ledger: { ...prev.ledger, [userId]: (ledgerData || []) as LedgerEntry[] },
+          tasks: (tasksData || []) as Task[],
+          taskSubmissions: (submissionsData || []) as TaskSubmission[],
+          campaigns: (campaignsData || []) as Campaign[],
+          campaignSubmissions: (campSubmissionsData || []) as CampaignSubmission[],
+          notifications: { ...prev.notifications, [userId]: userNotifs },
+          withdrawals: (withdrawalsData || []) as WithdrawalRequest[],
+          fundingRequests: (fundingData || []) as FundingRequest[],
+          referrals: { ...prev.referrals, [userId]: (referralsData || []).map((r: any) => r.referredId) },
+        }));
+      }).catch((e) => {
+        console.warn('Background data collection load note:', e);
       });
-      setIsInitializingAccount(false);
     } catch (err: any) {
       console.error('Account initialization error:', err);
       setInitializationError(err?.message || "We couldn't finish setting up your account.");
@@ -327,22 +340,14 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
 
   const [isPasswordRecovery, setIsPasswordRecovery] = useState<boolean>(false);
 
-  // Auth Session State Synchronizer
+  // Single Auth Session State Synchronizer Pipeline
   useEffect(() => {
     let active = true;
+    let currentInitializedId: string | null = null;
 
     if (window.location.hash.includes('type=recovery') || window.location.hash.includes('access_token')) {
       setIsPasswordRecovery(true);
     }
-
-    const setupAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user && active) {
-        await fetchAppData(session.user.id);
-      }
-    };
-
-    setupAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
@@ -352,8 +357,13 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
         }
         const user = session?.user;
         if (user) {
-          await fetchAppData(user.id);
+          if (currentInitializedId !== user.id) {
+            currentInitializedId = user.id;
+            await fetchAppData(user.id, true);
+          }
         } else {
+          currentInitializedId = null;
+          setIsInitializingAccount(false);
           setAppState({
             users: {},
             currentUser: null,

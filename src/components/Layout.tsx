@@ -1,81 +1,55 @@
 import React, { useState } from 'react';
+import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePayWorth } from '../engines/StateContext';
 import Footer from './Footer';
 import CookieBanner from './CookieBanner';
 import OfflineSyncStatusBadge from './OfflineSyncStatusBadge';
+import { getSidebarScreens, getBottomNavScreens, SCREEN_REGISTRY } from '../config/screenRegistry';
 import {
   Menu,
   MoreVertical,
-  Home,
-  ClipboardList,
-  Wallet,
-  ShoppingBag,
   Coins,
   ChevronRight,
-  User,
   ShieldCheck,
-  Award,
   Bell,
-  Sliders,
   LogOut,
-  Sparkles,
-  Trophy,
-  Users,
-  Gamepad2,
-  PieChart,
-  HelpCircle,
+  ShieldAlert,
+  User,
   FileText,
-  BadgeDollarSign,
-  ShieldAlert
+  HelpCircle,
+  Sparkles
 } from 'lucide-react';
 
-export default function Layout({ children }: { children: React.ReactNode }) {
-  const {
-    currentUser,
-    activeTab,
-    setActiveTab,
-    activeMenuScreen,
-    setActiveMenuScreen,
-    logout,
-  } = usePayWorth();
+export default function Layout({ children }: { children?: React.ReactNode }) {
+  const { currentUser, logout, state } = usePayWorth();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const [leftDrawerOpen, setLeftDrawerOpen] = useState(false);
   const [rightDropdownOpen, setRightDropdownOpen] = useState(false);
 
   // Unread notifications count
-  const userNotifs = currentUser ? (usePayWorth().state.notifications[currentUser.id] || []) : [];
+  const userNotifs = currentUser ? (state.notifications[currentUser.id] || []) : [];
   const unreadCount = userNotifs.filter((n) => !n.read).length;
 
-  const handleMenuClick = (screen: string | null) => {
-    setActiveMenuScreen(screen);
+  const isAdmin = currentUser?.email === 'admin@payworth.com' || (currentUser as any)?.role === 'admin';
+  const sidebarScreens = getSidebarScreens(isAdmin);
+  const bottomNavScreens = getBottomNavScreens();
+
+  const handleNavClick = (path: string) => {
+    navigate(path);
     setLeftDrawerOpen(false);
+    setRightDropdownOpen(false);
   };
 
-  const menuItems = [
-    { id: 'dashboard', label: 'Admin Panel', icon: Sliders, requiresAdmin: true },
-    { id: 'legal_admin', label: 'Legal Operations', icon: ShieldCheck, requiresAdmin: true },
-    { id: 'legal_center', label: 'Legal Center', icon: FileText },
-    { id: 'membership', label: 'Membership Tiers', icon: Sparkles },
-    { id: 'create_campaign', label: 'Start Campaign', icon: BadgeDollarSign },
-    { id: 'leaderboard', label: 'Leaderboards', icon: Trophy },
-    { id: 'wheel', label: 'Lucky Wheel', icon: Coins },
-    { id: 'games', label: 'Mini Games', icon: Gamepad2 },
-    { id: 'achievements', label: 'Achievements', icon: Award },
-    { id: 'referrals', label: 'Referrals Network', icon: Users },
-    { id: 'payfunds', label: 'Pay Funds Application', icon: BadgeDollarSign },
-    { id: 'statistics', label: 'Wallet Statistics', icon: PieChart },
-    { id: 'notifications', label: 'In-app Notifications', icon: Bell, badge: unreadCount > 0 ? unreadCount : undefined },
-    { id: 'settings', label: 'Engine Settings', icon: Sliders },
-  ];
-
   const rightItems = [
-    { id: 'profile', label: 'My Profile', icon: User },
-    { id: 'legal_center', label: 'Legal Repository', icon: FileText },
-    { id: 'help', label: 'System Help Center', icon: HelpCircle },
-    { id: 'privacy', label: 'Privacy Standards', icon: ShieldCheck },
-    { id: 'terms', label: 'Terms of Use', icon: FileText },
-    { id: 'about', label: 'About PayWorth', icon: Sparkles },
+    { id: 'profile', path: '/profile', label: 'My Profile', icon: User },
+    { id: 'legal_center', path: '/legal_center', label: 'Legal Repository', icon: FileText },
+    { id: 'help', path: '/help', label: 'System Help Center', icon: HelpCircle },
+    { id: 'privacy', path: '/privacy', label: 'Privacy Standards', icon: ShieldCheck },
+    { id: 'terms', path: '/terms', label: 'Terms of Use', icon: FileText },
+    { id: 'about', path: '/about', label: 'About PayWorth', icon: Sparkles },
   ];
 
   return (
@@ -96,7 +70,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </button>
           
           {/* PayWorth branding */}
-          <div className="flex items-center gap-1.5 cursor-pointer" onClick={() => { setActiveMenuScreen(null); setActiveTab('home'); }}>
+          <div className="flex items-center gap-1.5 cursor-pointer" onClick={() => navigate('/home')}>
             <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center">
               <Coins className="text-slate-950 w-4 h-4" />
             </div>
@@ -112,7 +86,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
           {currentUser ? (
             <div
-              onClick={() => { setActiveMenuScreen(null); setActiveTab('wallet'); }}
+              onClick={() => navigate('/wallet')}
               className="bg-white/5 hover:bg-white/10 cursor-pointer border border-white/5 rounded-xl px-2.5 py-1.5 flex items-center gap-1.5 transition-all active:scale-95"
             >
               <Coins className="w-3.5 h-3.5 text-emerald-400" />
@@ -122,7 +96,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </div>
           ) : (
             <button
-              onClick={() => { setActiveMenuScreen(null); setActiveTab('home'); }}
+              onClick={() => navigate('/auth')}
               className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-3.5 py-1.5 rounded-xl text-xs transition-all active:scale-95 shadow-md shadow-emerald-500/10"
             >
               Sign In
@@ -149,7 +123,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </span>
           </div>
           <button
-            onClick={() => setActiveMenuScreen('email_verification')}
+            onClick={() => navigate('/verify')}
             className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold px-3 py-1 rounded-lg text-[11px] shrink-0 ml-3 shadow-md transition-all active:scale-95 cursor-pointer"
           >
             Verify Now
@@ -158,8 +132,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       )}
 
       {/* CORE VIEWPORT FOR CHILD CONTENT */}
-      <main className="flex-1 overflow-y-auto relative z-10 pb-16">
-        {children}
+      <main className="flex-1 overflow-y-auto relative z-10 pb-20">
+        {children || <Outlet />}
         <Footer />
       </main>
 
@@ -168,59 +142,24 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
       {/* PERSISTENT BOTTOM NAVIGATION */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 bg-slate-950/85 backdrop-blur-xl border-t border-white/5 py-2 px-6 flex items-center justify-around">
-        <button
-          onClick={() => { setActiveMenuScreen(null); setActiveTab('home'); }}
-          className={`flex flex-col items-center gap-1 transition-all py-1 px-3 rounded-xl ${
-            activeTab === 'home' && !activeMenuScreen
-              ? 'text-emerald-400 font-semibold'
-              : 'text-slate-400 hover:text-white'
-          }`}
-        >
-          <Home className="w-5 h-5" />
-          <span className="text-[10px] tracking-wide">Home</span>
-        </button>
-
-        <button
-          onClick={() => { 
-            if (!currentUser) { setActiveMenuScreen('help'); } else { setActiveMenuScreen(null); setActiveTab('tasks'); }
-          }}
-          className={`flex flex-col items-center gap-1 transition-all py-1 px-3 rounded-xl ${
-            (activeTab === 'tasks' && !activeMenuScreen) || (activeMenuScreen === 'help' && !currentUser)
-              ? 'text-emerald-400 font-semibold'
-              : 'text-slate-400 hover:text-white'
-          }`}
-        >
-          <ClipboardList className="w-5 h-5" />
-          <span className="text-[10px] tracking-wide">{!currentUser ? 'FAQ' : 'Tasks'}</span>
-        </button>
-
-        <button
-          onClick={() => { 
-            if (!currentUser) { setActiveMenuScreen('about'); } else { setActiveMenuScreen(null); setActiveTab('wallet'); }
-          }}
-          className={`flex flex-col items-center gap-1 transition-all py-1 px-3 rounded-xl ${
-            (activeTab === 'wallet' && !activeMenuScreen) || (activeMenuScreen === 'about' && !currentUser)
-              ? 'text-emerald-400 font-semibold'
-              : 'text-slate-400 hover:text-white'
-          }`}
-        >
-          <Wallet className="w-5 h-5" />
-          <span className="text-[10px] tracking-wide">{!currentUser ? 'About' : 'Wallet'}</span>
-        </button>
-
-        <button
-          onClick={() => { 
-            if (!currentUser) { setActiveMenuScreen('contact'); } else { setActiveMenuScreen(null); setActiveTab('marketplace'); }
-          }}
-          className={`flex flex-col items-center gap-1 transition-all py-1 px-3 rounded-xl ${
-            (activeTab === 'marketplace' && !activeMenuScreen) || (activeMenuScreen === 'contact' && !currentUser)
-              ? 'text-emerald-400 font-semibold'
-              : 'text-slate-400 hover:text-white'
-          }`}
-        >
-          <ShoppingBag className="w-5 h-5" />
-          <span className="text-[10px] tracking-wide">{!currentUser ? 'Contact' : 'Marketplace'}</span>
-        </button>
+        {bottomNavScreens.map((screen) => {
+          const Icon = screen.icon;
+          const isSelected = location.pathname === screen.path || (location.pathname === '/' && screen.path === '/home');
+          return (
+            <button
+              key={screen.id}
+              onClick={() => handleNavClick(screen.path)}
+              className={`flex flex-col items-center gap-1 transition-all py-1 px-3 rounded-xl ${
+                isSelected
+                  ? 'text-emerald-400 font-semibold'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Icon className="w-5 h-5" />
+              <span className="text-[10px] tracking-wide">{screen.label.split(' ')[0]}</span>
+            </button>
+          );
+        })}
       </nav>
 
       {/* LEFT HAMBURGER MENU DRAWER */}
@@ -271,7 +210,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                     <div className="space-y-2">
                       <p className="text-xs text-slate-400">Welcome to PayWorth. Sign in to start earning.</p>
                       <button
-                        onClick={() => { setLeftDrawerOpen(false); setActiveMenuScreen(null); setActiveTab('home'); }}
+                        onClick={() => { setLeftDrawerOpen(false); navigate('/auth'); }}
                         className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs py-2 rounded-xl transition-all shadow-md active:scale-95"
                       >
                         Sign In / Register
@@ -287,19 +226,15 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   </span>
 
                   {currentUser ? (
-                    menuItems.map((item) => {
-                      const isSelected = activeMenuScreen === item.id;
+                    sidebarScreens.map((item) => {
+                      const isSelected = location.pathname === item.path;
                       const Icon = item.icon;
-
-                      // Skip Admin Panel if user is not the admin
-                      if (item.requiresAdmin && currentUser?.email !== 'admin@payworth.com') {
-                        return null;
-                      }
+                      const badge = item.id === 'notifications' && unreadCount > 0 ? unreadCount : undefined;
 
                       return (
                         <button
                           key={item.id}
-                          onClick={() => handleMenuClick(item.id)}
+                          onClick={() => handleNavClick(item.path)}
                           className={`w-full flex items-center justify-between p-2.5 rounded-xl text-xs transition-all ${
                             isSelected
                               ? 'bg-emerald-500 text-slate-950 font-bold'
@@ -310,9 +245,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                             <Icon className={`w-4 h-4 ${isSelected ? 'text-slate-950' : 'text-slate-400'}`} />
                             <span>{item.label}</span>
                           </div>
-                          {item.badge ? (
+                          {badge ? (
                             <span className="bg-red-500 text-white font-extrabold text-[9px] px-1.5 py-0.5 rounded-full">
-                              {item.badge}
+                              {badge}
                             </span>
                           ) : (
                             <ChevronRight className="w-3.5 h-3.5 opacity-50" />
@@ -322,12 +257,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                     })
                   ) : (
                     rightItems.map((item) => {
-                      const isSelected = activeMenuScreen === item.id;
+                      const isSelected = location.pathname === item.path;
                       const Icon = item.icon;
                       return (
                         <button
                           key={item.id}
-                          onClick={() => handleMenuClick(item.id)}
+                          onClick={() => handleNavClick(item.path)}
                           className={`w-full flex items-center justify-between p-2.5 rounded-xl text-xs transition-all ${
                             isSelected
                               ? 'bg-emerald-500 text-slate-950 font-bold'
@@ -353,6 +288,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                     onClick={() => {
                       setLeftDrawerOpen(false);
                       logout();
+                      navigate('/auth');
                     }}
                     className="w-full flex items-center justify-center gap-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 text-xs font-semibold py-2.5 rounded-xl transition-all"
                   >
@@ -362,7 +298,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   <button
                     onClick={() => {
                       setLeftDrawerOpen(false);
-                      setActiveMenuScreen('security');
+                      navigate('/security');
                     }}
                     className="w-full flex items-center justify-center gap-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 hover:text-emerald-300 text-xs font-semibold py-2.5 rounded-xl transition-all"
                   >
@@ -370,7 +306,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   </button>
                 )}
                 <div className="text-[9px] text-slate-500 text-center mt-3 font-mono">
-                  PAYWORTH CORE v1.0 • GLASSLINE
+                  PAYWORTH CORE v1.1.2 • ROUTER ENGINE
                 </div>
               </div>
             </motion.div>
@@ -394,10 +330,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 return (
                   <button
                     key={item.id}
-                    onClick={() => {
-                      handleMenuClick(item.id);
-                      setRightDropdownOpen(false);
-                    }}
+                    onClick={() => handleNavClick(item.path)}
                     className="w-full text-left flex items-center gap-3 p-2 hover:bg-white/5 active:scale-95 text-slate-300 hover:text-white rounded-xl text-xs transition-all"
                   >
                     <Icon className="w-4 h-4 text-slate-400" />

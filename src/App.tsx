@@ -1,49 +1,53 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { PayWorthProvider, usePayWorth } from './engines/StateContext';
 import Layout from './components/Layout';
-import Auth from './components/Auth';
-import Onboarding from './components/Onboarding';
+import ProtectedRoute from './components/ProtectedRoute';
+import ErrorBoundary from './components/ErrorBoundary';
 import WelcomePopup from './components/WelcomePopup';
 import LegalUpdateModal from './components/LegalUpdateModal';
-import HomeView from './components/HomeView';
-import TasksView from './components/TasksView';
-import WalletView from './components/WalletView';
-import MarketplaceView from './components/MarketplaceView';
-import MenuView from './components/MenuView';
 import SEOAndRouteManager from './components/SEOAndRouteManager';
-import VerificationEngine from './components/VerificationEngine';
 import InitializationScreen from './components/InitializationScreen';
+import { PageSkeleton } from './components/ui/SkeletonLoader';
+
+import {
+  LeaderboardView,
+  LuckyWheelView,
+  AchievementsView,
+  ReferralsView,
+  PayFundsView,
+  StatisticsView,
+  NotificationsView,
+  StaticInfoView
+} from './components/MenuView';
+
+// Lazy Loaded Page Components
+const Auth = lazy(() => import('./components/Auth'));
+const VerificationEngine = lazy(() => import('./components/VerificationEngine'));
+const HomeView = lazy(() => import('./components/HomeView'));
+const TasksView = lazy(() => import('./components/TasksView'));
+const WalletView = lazy(() => import('./components/WalletView'));
+const MarketplaceView = lazy(() => import('./components/MarketplaceView'));
+const MembershipView = lazy(() => import('./components/MembershipView'));
+const MiningView = lazy(() => import('./components/MiningView'));
+const CreateCampaignView = lazy(() => import('./components/CreateCampaignView'));
+const GamesView = lazy(() => import('./components/GamesView'));
+const SettingsView = lazy(() => import('./components/SettingsView'));
+const SecurityCenterView = lazy(() => import('./components/SecurityCenterView'));
+const AboutView = lazy(() => import('./components/AboutView'));
+const LegalCenterView = lazy(() => import('./components/LegalCenterView'));
+const AdminPlatformView = lazy(() => import('./components/AdminPlatformView'));
+const AdminLegalDashboard = lazy(() => import('./components/AdminLegalDashboard'));
 
 function AppContent() {
   const {
     currentUser,
-    activeTab,
-    activeMenuScreen,
     isInitializingAccount,
     initializationError,
     retryInitialization
   } = usePayWorth();
 
-  // Check if current URL route is the verification portal or callback payload
-  const currentPath = window.location.pathname;
-  const currentHash = window.location.hash;
-  const currentSearch = window.location.search;
-
-  const isVerificationRoute = 
-    currentPath === '/verify' || 
-    currentPath === '/account_verify' ||
-    currentHash.includes('type=signup') ||
-    currentHash.includes('type=email_change') ||
-    currentHash.includes('access_token') ||
-    currentSearch.includes('code=');
-
-  if (isVerificationRoute) {
-    return <VerificationEngine />;
-  }
-
-  const isPublicPage = activeMenuScreen && ['about', 'privacy', 'terms', 'security', 'contact', 'help'].includes(activeMenuScreen);
-
-  // 1. If account is currently initializing (provisioning profile, wallet, membership) or had an init error
+  // If account is initializing or had an initialization error
   if (isInitializingAccount || initializationError) {
     return (
       <InitializationScreen
@@ -53,46 +57,82 @@ function AppContent() {
     );
   }
 
-  // 2. If not authenticated and not on a public page, render the Auth portal
-  if (!currentUser && !isPublicPage) {
-    return <Auth />;
-  }
-
-  // 2. If authenticated but onboarding not completed, render the interactive Onboarding slider
-  if (currentUser && !currentUser.onboardingCompleted) {
-    return <Onboarding />;
-  }
-
-  // 3. Main Dashboard Layout viewports distribution
   return (
-    <Layout>
+    <>
+      {/* Dynamic SEO metadata manager */}
+      <SEOAndRouteManager />
+
       {/* Post-login interactive greeting card */}
       {currentUser && <WelcomePopup />}
 
       {/* Mandatory legal terms update modal check */}
       {currentUser && <LegalUpdateModal />}
 
-      {/* Render dynamic menu screens (Membership, leaderboard, games, achievements, setting, statistics, admin, etc.) if selected */}
-      {activeMenuScreen ? (
-        <MenuView />
-      ) : (
-        /* Render core tab views */
-        <>
-          {activeTab === 'home' && <HomeView />}
-          {activeTab === 'tasks' && <TasksView />}
-          {activeTab === 'wallet' && <WalletView />}
-          {activeTab === 'marketplace' && <MarketplaceView />}
-        </>
-      )}
-    </Layout>
+      <Suspense fallback={<PageSkeleton />}>
+        <Routes>
+          {/* Public Auth Portal */}
+          <Route path="/auth" element={<Auth />} />
+
+          {/* Account & Email Verification Portals */}
+          <Route path="/verify" element={<VerificationEngine />} />
+          <Route path="/account_verify" element={<VerificationEngine />} />
+
+          {/* Application Layout Routes */}
+          <Route path="/" element={<Layout />}>
+            <Route index element={<Navigate to="/home" replace />} />
+            
+            {/* Protected Main Routes */}
+            <Route path="home" element={<ProtectedRoute><HomeView /></ProtectedRoute>} />
+            <Route path="tasks" element={<ProtectedRoute><TasksView /></ProtectedRoute>} />
+            <Route path="wallet" element={<ProtectedRoute><WalletView /></ProtectedRoute>} />
+            <Route path="marketplace" element={<ProtectedRoute><MarketplaceView /></ProtectedRoute>} />
+            
+            {/* Protected Engine Routes */}
+            <Route path="membership" element={<ProtectedRoute><MembershipView /></ProtectedRoute>} />
+            <Route path="mining" element={<ProtectedRoute><MiningView /></ProtectedRoute>} />
+            <Route path="create_campaign" element={<ProtectedRoute><CreateCampaignView /></ProtectedRoute>} />
+            <Route path="leaderboard" element={<ProtectedRoute><LeaderboardView /></ProtectedRoute>} />
+            <Route path="wheel" element={<ProtectedRoute><LuckyWheelView /></ProtectedRoute>} />
+            <Route path="games" element={<ProtectedRoute><GamesView /></ProtectedRoute>} />
+            <Route path="achievements" element={<ProtectedRoute><AchievementsView /></ProtectedRoute>} />
+            <Route path="referrals" element={<ProtectedRoute><ReferralsView /></ProtectedRoute>} />
+            <Route path="payfunds" element={<ProtectedRoute><PayFundsView /></ProtectedRoute>} />
+            <Route path="statistics" element={<ProtectedRoute><StatisticsView /></ProtectedRoute>} />
+            <Route path="stats" element={<Navigate to="/statistics" replace />} />
+            <Route path="notifications" element={<ProtectedRoute><NotificationsView /></ProtectedRoute>} />
+            <Route path="settings" element={<ProtectedRoute><SettingsView /></ProtectedRoute>} />
+            <Route path="security" element={<ProtectedRoute><SecurityCenterView /></ProtectedRoute>} />
+            <Route path="profile" element={<ProtectedRoute><StaticInfoView page="profile" /></ProtectedRoute>} />
+
+            {/* Public / Informational Pages */}
+            <Route path="help" element={<StaticInfoView page="help" />} />
+            <Route path="faq" element={<Navigate to="/help" replace />} />
+            <Route path="contact" element={<StaticInfoView page="contact" />} />
+            <Route path="about" element={<AboutView />} />
+            <Route path="privacy" element={<LegalCenterView initialDocId="privacy-policy" />} />
+            <Route path="terms" element={<LegalCenterView initialDocId="terms-of-service" />} />
+            <Route path="legal_center" element={<LegalCenterView />} />
+
+            {/* Admin & Auditor Routes */}
+            <Route path="admin" element={<ProtectedRoute requireAdmin><AdminPlatformView /></ProtectedRoute>} />
+            <Route path="dashboard" element={<ProtectedRoute requireAdmin><AdminPlatformView /></ProtectedRoute>} />
+            <Route path="legal_admin" element={<ProtectedRoute requireAdmin><AdminLegalDashboard /></ProtectedRoute>} />
+
+            {/* Fallback Catch-all Route */}
+            <Route path="*" element={<Navigate to="/home" replace />} />
+          </Route>
+        </Routes>
+      </Suspense>
+    </>
   );
 }
 
 export default function App() {
   return (
-    <PayWorthProvider>
-      <SEOAndRouteManager />
-      <AppContent />
-    </PayWorthProvider>
+    <ErrorBoundary>
+      <PayWorthProvider>
+        <AppContent />
+      </PayWorthProvider>
+    </ErrorBoundary>
   );
 }
