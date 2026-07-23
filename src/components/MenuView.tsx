@@ -14,7 +14,8 @@ import MiningView from './MiningView';
 import GamesView from './GamesView';
 import ReferralView from './ReferralView';
 import AdminPlatformView from './AdminPlatformView';
-import EmailVerificationView from './EmailVerificationView';
+import EmailOTPVerification from './EmailOTPVerification';
+import SecurityCenterView from './SecurityCenterView';
 import {
   Sparkles,
   Award,
@@ -72,11 +73,15 @@ export default function MenuView() {
   }
 
   if (activeMenuScreen === 'email_verification') {
-    return <EmailVerificationView />;
+    return <EmailOTPVerification onCancel={() => setActiveMenuScreen(null)} />;
   }
 
   if (activeMenuScreen === 'legal_admin') {
     return <AdminLegalDashboard />;
+  }
+
+  if (activeMenuScreen === 'security') {
+    return <SecurityCenterView />;
   }
 
   return (

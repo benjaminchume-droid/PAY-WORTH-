@@ -66,6 +66,8 @@ interface StateContextType {
   successMessage: string | null;
   isPasswordRecovery: boolean;
   setIsPasswordRecovery: (val: boolean) => void;
+  pendingOtpEmail: string | null;
+  setPendingOtpEmail: (email: string | null) => void;
   activeTab: 'home' | 'tasks' | 'wallet' | 'marketplace';
   setActiveTab: (tab: 'home' | 'tasks' | 'wallet' | 'marketplace') => void;
   activeMenuScreen: string | null;
@@ -74,6 +76,8 @@ interface StateContextType {
   // Actions
   login: (email: string, password: string) => Promise<boolean>;
   signup: (email: string, password: string, username: string, fullName?: string, referralCode?: string) => Promise<boolean>;
+  verifyOtpCode: (email: string, code: string) => Promise<{ success: boolean; error?: string }>;
+  resendOtpCode: (email: string) => Promise<boolean>;
   logout: () => Promise<void>;
   forgotPassword: (email: string) => Promise<void>;
   updatePassword: (newPassword: string) => Promise<boolean>;
@@ -103,6 +107,10 @@ interface StateContextType {
   submitFundingRequest: (amount: number, reason: string) => Promise<boolean>;
   submitKyc: (docReference: string) => Promise<boolean>;
   setWalletPin: (pin: string) => Promise<boolean>;
+  verifyTransactionPin: (pin: string) => Promise<boolean>;
+  loginWithOAuth: (provider: 'google' | 'facebook') => Promise<boolean>;
+  checkUsernameAvailability: (username: string) => Promise<{ available: boolean; suggestions?: string[] }>;
+  completeProfile: (data: { username: string; displayName?: string; referralCode?: string }) => Promise<boolean>;
   updateWalletLimits: (daily: number, monthly: number, spending: number) => Promise<boolean>;
   updateWalletStatus: (status: 'active' | 'locked' | 'frozen') => Promise<boolean>;
   fundWallet: (amount: number, provider: string) => Promise<boolean>;
@@ -141,6 +149,7 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [pendingOtpEmail, setPendingOtpEmail] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'home' | 'tasks' | 'wallet' | 'marketplace'>('home');
   const [activeMenuScreen, setActiveMenuScreen] = useState<string | null>(null);
 
@@ -469,17 +478,12 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
         });
       }
 
-      // Automatically send verification email
-      await supabase.auth.resend({
-        type: 'signup',
-        email: email.trim(),
-        options: {
-          emailRedirectTo: `${window.location.origin}/verify`,
-        }
-      });
+      // Automatically set pending OTP target email & trigger OTP dispatch
+      setPendingOtpEmail(email.trim());
+      await resendOtpCode(email.trim());
 
       await fetchAppData(activeUserId);
-      setSuccessMessage('Registration successful! You are now logged in. A verification email has been dispatched to your inbox.');
+      setSuccessMessage('Registration successful! A 6-digit verification code has been sent to your email address.');
       return true;
     } catch (err: any) {
       console.error(err);
@@ -490,7 +494,97 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // 3. Log Out Wrapper
+  // 3. Verify OTP Code
+  const verifyOtpCode = async (emailToVerify: string, code: string): Promise<{ success: boolean; error?: string }> => {
+    setLoading(true);
+    clearMessages();
+    try {
+      const cleanEmail = emailToVerify.trim();
+      const cleanCode = code.trim();
+
+      if (!cleanEmail || !cleanCode) {
+        return { success: false, error: 'Email and verification code are required.' };
+      }
+
+      // 1. Attempt Supabase verifyOtp with type 'signup'
+      let { data, error: verifyErr } = await supabase.auth.verifyOtp({
+        email: cleanEmail,
+        token: cleanCode,
+        type: 'signup',
+      });
+
+      // 2. Fallback to type 'email' if 'signup' returned error
+      if (verifyErr) {
+        const res2 = await supabase.auth.verifyOtp({
+          email: cleanEmail,
+          token: cleanCode,
+          type: 'email',
+        });
+        if (res2.error) {
+          throw verifyErr || res2.error;
+        }
+        data = res2.data;
+      }
+
+      const activeUserId = data.session?.user?.id || data.user?.id || appState.currentUser?.id;
+
+      if (activeUserId) {
+        // Mark emailVerified in database profiles table
+        await supabase
+          .from('profiles')
+          .update({ emailVerified: true, email: cleanEmail })
+          .eq('id', activeUserId);
+
+        await fetchAppData(activeUserId);
+      }
+
+      setPendingOtpEmail(null);
+      setSuccessMessage('Your email has been verified successfully!');
+      return { success: true };
+    } catch (err: any) {
+      console.error('verifyOtpCode failure:', err);
+      const parsed = parseAuthError(err);
+      setError(parsed);
+      return { success: false, error: parsed };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 4. Resend OTP Code
+  const resendOtpCode = async (targetEmail: string): Promise<boolean> => {
+    setLoading(true);
+    clearMessages();
+    try {
+      const cleanEmail = targetEmail.trim();
+      if (!cleanEmail) {
+        setError('Email address is required to dispatch OTP code.');
+        return false;
+      }
+
+      const { error: err1 } = await supabase.auth.resend({
+        type: 'signup',
+        email: cleanEmail,
+      });
+
+      if (err1) {
+        // Fallback to signInWithOtp if signup resend fails or rate limited
+        const { error: err2 } = await supabase.auth.signInWithOtp({ email: cleanEmail });
+        if (err2) throw err1 || err2;
+      }
+
+      setSuccessMessage(`A 6-digit verification code has been dispatched to ${cleanEmail}`);
+      return true;
+    } catch (err: any) {
+      console.error('resendOtpCode error:', err);
+      setError(parseAuthError(err));
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 5. Log Out Wrapper
   const logout = async () => {
     setLoading(true);
     try {
@@ -499,6 +593,7 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
       console.error('Logout error:', err);
     } finally {
       setIsPasswordRecovery(false);
+      setPendingOtpEmail(null);
       setAppState({
         users: {},
         currentUser: null,
@@ -516,7 +611,7 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // 4. Forgot Password Wrapper
+  // 6. Forgot Password Wrapper
   const forgotPassword = async (email: string) => {
     setLoading(true);
     clearMessages();
@@ -538,7 +633,7 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // 5. Update Password (When in recovery mode)
+  // 7. Update Password (When in recovery mode)
   const updatePassword = async (newPassword: string): Promise<boolean> => {
     setLoading(true);
     clearMessages();
@@ -563,33 +658,14 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // 6. Resend Verification Email
+  // 8. Resend Verification OTP
   const resendVerificationEmail = async (targetEmail?: string): Promise<boolean> => {
-    setLoading(true);
-    clearMessages();
-    try {
-      const emailToSend = targetEmail || appState.currentUser?.email;
-      if (!emailToSend) {
-        setError('No email address found to resend verification.');
-        return false;
-      }
-      const { error: resendErr } = await supabase.auth.resend({
-        type: 'signup',
-        email: emailToSend,
-        options: {
-          emailRedirectTo: `${window.location.origin}/verify`,
-        }
-      });
-      if (resendErr) throw resendErr;
-      setSuccessMessage(`Verification email sent to ${emailToSend}. Please check your inbox and spam folder.`);
-      return true;
-    } catch (err: any) {
-      console.error(err);
-      setError(parseAuthError(err));
+    const emailToSend = targetEmail || pendingOtpEmail || appState.currentUser?.email;
+    if (!emailToSend) {
+      setError('No email address found to resend verification code.');
       return false;
-    } finally {
-      setLoading(false);
     }
+    return await resendOtpCode(emailToSend);
   };
 
   // 7. Refresh User Session (check if email verified)
@@ -1292,6 +1368,125 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // 28b. Verify transaction PIN
+  const verifyTransactionPin = async (pin: string): Promise<boolean> => {
+    if (!appState.currentUser) return false;
+    return appState.currentUser.walletPin === pin;
+  };
+
+  // 28c. OAuth Login Wrapper (Google & Facebook)
+  const loginWithOAuth = async (provider: 'google' | 'facebook'): Promise<boolean> => {
+    setLoading(true);
+    clearMessages();
+    try {
+      const { error: authErr } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: {
+          redirectTo: window.location.origin,
+        },
+      });
+      if (authErr) throw authErr;
+      return true;
+    } catch (err: any) {
+      console.error(`OAuth ${provider} error:`, err);
+      setError(parseAuthError(err));
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 28d. Check Username Availability & Generate Suggestions
+  const checkUsernameAvailability = async (
+    username: string
+  ): Promise<{ available: boolean; suggestions?: string[] }> => {
+    const clean = username.trim().toLowerCase();
+    if (!clean || clean.length < 3 || !/^[a-zA-Z0-9_]+$/.test(clean)) {
+      return { available: false };
+    }
+
+    try {
+      const { data, error: err } = await supabase
+        .from('profiles')
+        .select('username')
+        .ilike('username', clean)
+        .maybeSingle();
+
+      if (err) {
+        console.error('Username availability check error:', err);
+      }
+
+      if (data) {
+        const rand = Math.floor(100 + Math.random() * 900);
+        return {
+          available: false,
+          suggestions: [`${clean}${rand}`, `${clean}_pwc`, `${clean}_official`],
+        };
+      }
+
+      return { available: true };
+    } catch (e) {
+      return { available: true };
+    }
+  };
+
+  // 28e. Complete Profile & Onboarding
+  const completeProfile = async (data: {
+    username: string;
+    displayName?: string;
+    referralCode?: string;
+  }): Promise<boolean> => {
+    if (!appState.currentUser) return false;
+    setLoading(true);
+    clearMessages();
+    try {
+      const { username, displayName, referralCode } = data;
+      const cleanUsername = username.trim();
+
+      if (!cleanUsername || cleanUsername.length < 3) {
+        setError('Username must be at least 3 characters in length.');
+        return false;
+      }
+
+      let referredBy: string | null = appState.currentUser.referredBy;
+      if (referralCode && referralCode.trim() && !referredBy) {
+        const { data: refUser } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('referralCode', referralCode.trim().toUpperCase())
+          .maybeSingle();
+
+        if (refUser && refUser.id !== appState.currentUser.id) {
+          referredBy = refUser.id;
+        }
+      }
+
+      const walletNum = appState.currentUser.walletNumber || `412${Math.floor(1000000 + Math.random() * 9000000)}`;
+
+      const { error: upErr } = await supabase
+        .from('profiles')
+        .update({
+          username: cleanUsername,
+          walletNumber: walletNum,
+          referredBy,
+          onboardingCompleted: true,
+        })
+        .eq('id', appState.currentUser.id);
+
+      if (upErr) throw upErr;
+
+      await fetchAppData(appState.currentUser.id);
+      setSuccessMessage('Profile setup complete!');
+      return true;
+    } catch (err: any) {
+      console.error('completeProfile error:', err);
+      setError(err.message || 'Failed to complete profile.');
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // 29. Custom limits update
   const updateWalletLimits = async (daily: number, monthly: number, spending: number): Promise<boolean> => {
     if (!appState.currentUser) return false;
@@ -1640,12 +1835,16 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
         successMessage,
         isPasswordRecovery,
         setIsPasswordRecovery,
+        pendingOtpEmail,
+        setPendingOtpEmail,
         activeTab,
         setActiveTab,
         activeMenuScreen,
         setActiveMenuScreen,
         login,
         signup,
+        verifyOtpCode,
+        resendOtpCode,
         logout,
         forgotPassword,
         updatePassword,
@@ -1675,6 +1874,10 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
         submitFundingRequest,
         submitKyc,
         setWalletPin,
+        verifyTransactionPin,
+        loginWithOAuth,
+        checkUsernameAvailability,
+        completeProfile,
         updateWalletLimits,
         updateWalletStatus,
         fundWallet,

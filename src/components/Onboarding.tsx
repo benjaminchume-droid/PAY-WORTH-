@@ -1,18 +1,75 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePayWorth } from '../engines/StateContext';
-import { Coins, ShieldAlert, Award, ArrowRight, ArrowLeft, Layers, Trophy, CheckCircle } from 'lucide-react';
+import { Coins, ShieldAlert, Award, ArrowRight, ArrowLeft, Layers, Trophy, CheckCircle, UserCheck, AlertCircle, Sparkles } from 'lucide-react';
 
 export default function Onboarding() {
-  const { onboardingComplete } = usePayWorth();
+  const { currentUser, onboardingComplete, checkUsernameAvailability, completeProfile, loading } = usePayWorth();
   const [page, setPage] = useState(1);
 
-  const handleNext = () => {
+  // Profile setup states
+  const [usernameInput, setUsernameInput] = useState(currentUser?.username || '');
+  const [referralInput, setReferralInput] = useState('');
+  const [checkingUsername, setCheckingUsername] = useState(false);
+  const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [profileError, setProfileError] = useState<string | null>(null);
+
+  const handleNext = async () => {
     if (page < 5) {
       setPage((p) => p + 1);
-    } else {
-      onboardingComplete();
+    } else if (page === 5) {
+      setPage(6); // Go to Profile Completion step
+    } else if (page === 6) {
+      // Execute profile completion
+      setProfileError(null);
+      if (!usernameInput.trim()) {
+        setProfileError('Please choose a unique username.');
+        return;
+      }
+
+      setCheckingUsername(true);
+      const avail = await checkUsernameAvailability(usernameInput);
+      setCheckingUsername(false);
+
+      if (!avail.available) {
+        setUsernameAvailable(false);
+        setSuggestions(avail.suggestions || []);
+        setProfileError('This username is already taken. Please select one of the suggestions below or choose another.');
+        return;
+      }
+
+      const ok = await completeProfile({
+        username: usernameInput,
+        referralCode: referralInput || undefined,
+      });
+
+      if (ok) {
+        onboardingComplete();
+      }
     }
+  };
+
+  const handleCheckUsername = async (val: string) => {
+    setUsernameInput(val);
+    setProfileError(null);
+    if (val.trim().length >= 3) {
+      setCheckingUsername(true);
+      const res = await checkUsernameAvailability(val);
+      setCheckingUsername(false);
+      setUsernameAvailable(res.available);
+      setSuggestions(res.suggestions || []);
+    } else {
+      setUsernameAvailable(null);
+      setSuggestions([]);
+    }
+  };
+
+  const handleSelectSuggestion = (sug: string) => {
+    setUsernameInput(sug);
+    setUsernameAvailable(true);
+    setSuggestions([]);
+    setProfileError(null);
   };
 
   const handleBack = () => {
@@ -39,7 +96,7 @@ export default function Onboarding() {
           </div>
           <span className="text-sm font-semibold tracking-wide text-white font-mono">PAYWORTH</span>
         </div>
-        {page < 5 && (
+        {page < 6 && (
           <button
             onClick={handleSkip}
             className="text-xs text-slate-400 hover:text-white transition-all font-medium bg-white/5 px-3 py-1 rounded-full border border-white/5 hover:bg-white/10"
@@ -126,7 +183,7 @@ export default function Onboarding() {
                   <ShieldAlert className="text-slate-950 w-9 h-9" />
                 </div>
                 <h2 className="text-2xl font-bold text-white leading-tight">
-                  Trust Score & Safety Guards
+                  Trust Score &amp; Safety Guards
                 </h2>
                 <p className="text-xs text-slate-300 mt-3 leading-relaxed">
                   Our core security engine tracks user trust levels. Fake evidence or spam triggers automatic score penalties. Maintain high trust to request wires, cash out, and access high-paying business contracts.
@@ -134,9 +191,74 @@ export default function Onboarding() {
               </>
             )}
 
+            {page === 6 && (
+              <div className="w-full text-left space-y-4">
+                <div className="text-center mb-4">
+                  <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto mb-2">
+                    <UserCheck className="w-7 h-7" />
+                  </div>
+                  <h2 className="text-xl font-bold text-white">Complete Your Handle</h2>
+                  <p className="text-xs text-slate-300 mt-1">Set your unique platform handle &amp; referral link.</p>
+                </div>
+
+                {profileError && (
+                  <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-mono rounded-xl flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{profileError}</span>
+                  </div>
+                )}
+
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center">
+                    <label className="text-[10px] text-slate-400 font-mono uppercase tracking-wider block">Unique Handle</label>
+                    {checkingUsername && <span className="text-[10px] text-amber-400 font-mono animate-pulse">Checking handle...</span>}
+                    {usernameAvailable === true && <span className="text-[10px] text-emerald-400 font-mono font-bold">✓ Available!</span>}
+                  </div>
+                  <input
+                    type="text"
+                    value={usernameInput}
+                    onChange={(e) => handleCheckUsername(e.target.value)}
+                    placeholder="e.g. LedgerQueen"
+                    required
+                    className="w-full bg-slate-950/80 border border-white/10 focus:border-emerald-500 outline-none text-white text-xs px-3.5 py-3 rounded-xl transition-all font-mono"
+                  />
+                </div>
+
+                {/* Suggestions if handle taken */}
+                {suggestions.length > 0 && (
+                  <div className="space-y-1.5 pt-1">
+                    <span className="text-[10px] text-slate-400 font-mono block">Available Handle Suggestions:</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {suggestions.map((sug) => (
+                        <button
+                          key={sug}
+                          type="button"
+                          onClick={() => handleSelectSuggestion(sug)}
+                          className="text-xs font-mono bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2.5 py-1 rounded-lg transition-all cursor-pointer"
+                        >
+                          @{sug}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-1 pt-2">
+                  <label className="text-[10px] text-slate-400 font-mono uppercase tracking-wider block">Referral Code (Optional)</label>
+                  <input
+                    type="text"
+                    value={referralInput}
+                    onChange={(e) => setReferralInput(e.target.value)}
+                    placeholder="e.g. FOUNDER99"
+                    className="w-full bg-slate-950/80 border border-white/10 focus:border-emerald-500 outline-none text-white text-xs px-3.5 py-3 rounded-xl transition-all font-mono"
+                  />
+                </div>
+              </div>
+            )}
+
             {/* Page dot indicator */}
             <div className="flex gap-1.5 mt-6">
-              {[1, 2, 3, 4, 5].map((i) => (
+              {[1, 2, 3, 4, 5, 6].map((i) => (
                 <div
                   key={i}
                   className={`h-1.5 rounded-full transition-all duration-300 ${
@@ -146,15 +268,15 @@ export default function Onboarding() {
               ))}
             </div>
           </motion.div>
-          </AnimatePresence>
-        </div>
+        </AnimatePresence>
+      </div>
 
       {/* Footer controls */}
       <div className="flex justify-between items-center z-10 max-w-sm mx-auto w-full">
         {page > 1 ? (
           <button
             onClick={handleBack}
-            className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-all font-medium bg-white/5 hover:bg-white/10 border border-white/5 rounded-2xl px-5 py-3"
+            className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-all font-medium bg-white/5 hover:bg-white/10 border border-white/5 rounded-2xl px-5 py-3 cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4" /> Back
           </button>
@@ -164,11 +286,16 @@ export default function Onboarding() {
 
         <button
           onClick={handleNext}
-          className="flex items-center gap-1.5 text-xs bg-emerald-500 text-slate-950 hover:bg-emerald-400 transition-all font-bold rounded-2xl px-6 py-3.5 shadow-lg shadow-emerald-500/10 hover:scale-[1.02] active:scale-[0.98]"
+          disabled={loading}
+          className="flex items-center gap-1.5 text-xs bg-emerald-500 text-slate-950 hover:bg-emerald-400 transition-all font-bold rounded-2xl px-6 py-3.5 shadow-lg shadow-emerald-500/10 hover:scale-[1.02] active:scale-[0.98] cursor-pointer disabled:opacity-50"
         >
-          {page === 5 ? (
+          {page === 6 ? (
             <>
-              Start Exploring <CheckCircle className="w-4 h-4" />
+              {loading ? 'Finalizing Profile...' : 'Complete Profile & Enter'} <CheckCircle className="w-4 h-4" />
+            </>
+          ) : page === 5 ? (
+            <>
+              Set Handle <ArrowRight className="w-4 h-4" />
             </>
           ) : (
             <>
@@ -180,3 +307,4 @@ export default function Onboarding() {
     </div>
   );
 }
+
