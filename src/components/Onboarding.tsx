@@ -1,19 +1,36 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePayWorth } from '../engines/StateContext';
-import { Coins, ShieldAlert, Award, ArrowRight, ArrowLeft, Layers, Trophy, CheckCircle, UserCheck, AlertCircle, Sparkles } from 'lucide-react';
+import { generateReadableUsername, saveOnboardingDraft, getOnboardingDraft } from '../lib/draftRecovery';
+import { Coins, ShieldAlert, Award, ArrowRight, ArrowLeft, Layers, Trophy, UserCheck, AlertCircle, Sparkles, CheckCircle } from 'lucide-react';
 
 export default function Onboarding() {
-  const { currentUser, onboardingComplete, checkUsernameAvailability, completeProfile, loading } = usePayWorth();
-  const [page, setPage] = useState(1);
+  const { currentUser, onboardingComplete, checkUsernameAvailability, completeProfile, loading, setActiveMenuScreen } = usePayWorth();
+  
+  // Restore draft or start at page 1
+  const savedDraft = getOnboardingDraft();
+  const [page, setPage] = useState(savedDraft?.step || 1);
+
+  // Check URL ref or local ref
+  const urlRef = new URLSearchParams(window.location.search).get('ref') || localStorage.getItem('pw_ref') || '';
+  const isUrlRefLocked = Boolean(new URLSearchParams(window.location.search).get('ref'));
 
   // Profile setup states
-  const [usernameInput, setUsernameInput] = useState(currentUser?.username || '');
-  const [referralInput, setReferralInput] = useState('');
+  const [usernameInput, setUsernameInput] = useState(savedDraft?.username || currentUser?.username || '');
+  const [referralInput, setReferralInput] = useState(urlRef || savedDraft?.referralCode || '');
   const [checkingUsername, setCheckingUsername] = useState(false);
   const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [profileError, setProfileError] = useState<string | null>(null);
+
+  // Save progress draft whenever inputs or step change
+  useEffect(() => {
+    saveOnboardingDraft({
+      step: page,
+      username: usernameInput,
+      referralCode: referralInput,
+    });
+  }, [page, usernameInput, referralInput]);
 
   const handleNext = async () => {
     if (page < 5) {
@@ -23,24 +40,42 @@ export default function Onboarding() {
     } else if (page === 6) {
       // Execute profile completion
       setProfileError(null);
-      if (!usernameInput.trim()) {
-        setProfileError('Please choose a unique username.');
-        return;
+      let targetUsername = usernameInput.trim();
+
+      // If user left username blank: Automatically generate a premium readable username!
+      if (!targetUsername) {
+        let generated = generateReadableUsername();
+        let availCheck = await checkUsernameAvailability(generated);
+        let retries = 0;
+        while (!availCheck.available && retries < 5) {
+          generated = generateReadableUsername();
+          availCheck = await checkUsernameAvailability(generated);
+          retries++;
+        }
+        if (!availCheck.available) {
+          generated = `${generated}-${Math.floor(10 + Math.random() * 90)}`;
+        }
+        targetUsername = generated;
+        setUsernameInput(generated);
       }
 
       setCheckingUsername(true);
-      const avail = await checkUsernameAvailability(usernameInput);
+      const avail = await checkUsernameAvailability(targetUsername);
       setCheckingUsername(false);
 
       if (!avail.available) {
         setUsernameAvailable(false);
-        setSuggestions(avail.suggestions || []);
-        setProfileError('This username is already taken. Please select one of the suggestions below or choose another.');
+        setSuggestions(avail.suggestions || [
+          generateReadableUsername(),
+          generateReadableUsername(),
+          generateReadableUsername()
+        ]);
+        setProfileError('This handle is reserved or taken. Please select one of the suggested handles below or type a unique handle.');
         return;
       }
 
       const ok = await completeProfile({
-        username: usernameInput,
+        username: targetUsername,
         referralCode: referralInput || undefined,
       });
 
@@ -48,6 +83,14 @@ export default function Onboarding() {
         onboardingComplete();
       }
     }
+  };
+
+  const handleAutoGenerate = () => {
+    const sug = generateReadableUsername();
+    setUsernameInput(sug);
+    setUsernameAvailable(true);
+    setSuggestions([]);
+    setProfileError(null);
   };
 
   const handleCheckUsername = async (val: string) => {
@@ -211,23 +254,34 @@ export default function Onboarding() {
                 <div className="space-y-1">
                   <div className="flex justify-between items-center">
                     <label className="text-[10px] text-slate-400 font-mono uppercase tracking-wider block">Unique Handle</label>
-                    {checkingUsername && <span className="text-[10px] text-amber-400 font-mono animate-pulse">Checking handle...</span>}
-                    {usernameAvailable === true && <span className="text-[10px] text-emerald-400 font-mono font-bold">✓ Available!</span>}
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleAutoGenerate}
+                        className="text-[10px] text-emerald-400 font-mono hover:underline flex items-center gap-1 cursor-pointer"
+                      >
+                        <Sparkles className="w-3 h-3" /> Auto-generate
+                      </button>
+                      {checkingUsername && <span className="text-[10px] text-amber-400 font-mono animate-pulse">Checking...</span>}
+                      {usernameAvailable === true && <span className="text-[10px] text-emerald-400 font-mono font-bold">✓ Available!</span>}
+                    </div>
                   </div>
                   <input
                     type="text"
                     value={usernameInput}
                     onChange={(e) => handleCheckUsername(e.target.value)}
-                    placeholder="e.g. LedgerQueen"
-                    required
+                    placeholder="Leave blank to auto-generate readable handle"
                     className="w-full bg-slate-950/80 border border-white/10 focus:border-emerald-500 outline-none text-white text-xs px-3.5 py-3 rounded-xl transition-all font-mono"
                   />
+                  <p className="text-[10px] text-slate-400 font-sans">
+                    Leaving handle blank will automatically generate a premium readable name (e.g. emerald-horizon).
+                  </p>
                 </div>
 
                 {/* Suggestions if handle taken */}
                 {suggestions.length > 0 && (
                   <div className="space-y-1.5 pt-1">
-                    <span className="text-[10px] text-slate-400 font-mono block">Available Handle Suggestions:</span>
+                    <span className="text-[10px] text-slate-400 font-mono block">Available Suggested Handles:</span>
                     <div className="flex flex-wrap gap-1.5">
                       {suggestions.map((sug) => (
                         <button
@@ -244,13 +298,23 @@ export default function Onboarding() {
                 )}
 
                 <div className="space-y-1 pt-2">
-                  <label className="text-[10px] text-slate-400 font-mono uppercase tracking-wider block">Referral Code (Optional)</label>
+                  <div className="flex justify-between items-center">
+                    <label className="text-[10px] text-slate-400 font-mono uppercase tracking-wider block">Referral Code (Optional)</label>
+                    {isUrlRefLocked && (
+                      <span className="text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full font-mono">
+                        Locked from referral link
+                      </span>
+                    )}
+                  </div>
                   <input
                     type="text"
                     value={referralInput}
                     onChange={(e) => setReferralInput(e.target.value)}
+                    readOnly={isUrlRefLocked}
                     placeholder="e.g. FOUNDER99"
-                    className="w-full bg-slate-950/80 border border-white/10 focus:border-emerald-500 outline-none text-white text-xs px-3.5 py-3 rounded-xl transition-all font-mono"
+                    className={`w-full bg-slate-950/80 border border-white/10 outline-none text-white text-xs px-3.5 py-3 rounded-xl transition-all font-mono ${
+                      isUrlRefLocked ? 'opacity-80 text-emerald-400 cursor-not-allowed' : 'focus:border-emerald-500'
+                    }`}
                   />
                 </div>
               </div>
@@ -272,37 +336,77 @@ export default function Onboarding() {
       </div>
 
       {/* Footer controls */}
-      <div className="flex justify-between items-center z-10 max-w-sm mx-auto w-full">
-        {page > 1 ? (
-          <button
-            onClick={handleBack}
-            className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-all font-medium bg-white/5 hover:bg-white/10 border border-white/5 rounded-2xl px-5 py-3 cursor-pointer"
-          >
-            <ArrowLeft className="w-4 h-4" /> Back
-          </button>
-        ) : (
-          <div />
-        )}
-
-        <button
-          onClick={handleNext}
-          disabled={loading}
-          className="flex items-center gap-1.5 text-xs bg-emerald-500 text-slate-950 hover:bg-emerald-400 transition-all font-bold rounded-2xl px-6 py-3.5 shadow-lg shadow-emerald-500/10 hover:scale-[1.02] active:scale-[0.98] cursor-pointer disabled:opacity-50"
-        >
-          {page === 6 ? (
-            <>
-              {loading ? 'Finalizing Profile...' : 'Complete Profile & Enter'} <CheckCircle className="w-4 h-4" />
-            </>
-          ) : page === 5 ? (
-            <>
-              Set Handle <ArrowRight className="w-4 h-4" />
-            </>
+      <div className="flex flex-col gap-3 z-10 max-w-sm mx-auto w-full">
+        <div className="flex justify-between items-center w-full">
+          {page > 1 ? (
+            <button
+              onClick={handleBack}
+              className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-all font-medium bg-white/5 hover:bg-white/10 border border-white/5 rounded-2xl px-5 py-3 cursor-pointer"
+            >
+              <ArrowLeft className="w-4 h-4" /> Back
+            </button>
           ) : (
-            <>
-              Next <ArrowRight className="w-4 h-4" />
-            </>
+            <div />
           )}
-        </button>
+
+          <button
+            onClick={handleNext}
+            disabled={loading}
+            className="flex items-center gap-1.5 text-xs bg-emerald-500 text-slate-950 hover:bg-emerald-400 transition-all font-bold rounded-2xl px-6 py-3.5 shadow-lg shadow-emerald-500/10 hover:scale-[1.02] active:scale-[0.98] cursor-pointer disabled:opacity-50"
+          >
+            {page === 6 ? (
+              <>
+                {loading ? 'Finalizing Profile...' : 'Complete Profile & Enter'} <CheckCircle className="w-4 h-4" />
+              </>
+            ) : page === 5 ? (
+              <>
+                Set Handle <ArrowRight className="w-4 h-4" />
+              </>
+            ) : (
+              <>
+                Next <ArrowRight className="w-4 h-4" />
+              </>
+            )}
+          </button>
+        </div>
+
+        {page === 6 && (
+          <p className="text-[11px] text-slate-400 text-center font-sans leading-relaxed pt-1">
+            By selecting Continue, you agree to the{' '}
+            <button
+              type="button"
+              onClick={() => setActiveMenuScreen('terms')}
+              className="text-emerald-400 hover:underline font-semibold cursor-pointer"
+            >
+              Terms of Service
+            </button>
+            ,{' '}
+            <button
+              type="button"
+              onClick={() => setActiveMenuScreen('privacy')}
+              className="text-emerald-400 hover:underline font-semibold cursor-pointer"
+            >
+              Privacy Policy
+            </button>
+            ,{' '}
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent('open_cookie_preferences'))}
+              className="text-emerald-400 hover:underline font-semibold cursor-pointer"
+            >
+              Cookie Policy
+            </button>
+            , and{' '}
+            <button
+              type="button"
+              onClick={() => setActiveMenuScreen('legal_center')}
+              className="text-emerald-400 hover:underline font-semibold cursor-pointer"
+            >
+              Community Guidelines
+            </button>
+            .
+          </p>
+        )}
       </div>
     </div>
   );

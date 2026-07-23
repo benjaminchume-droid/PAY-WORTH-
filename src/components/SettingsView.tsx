@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 
 export default function SettingsView() {
-  const { user, updateUser, signOut, setActiveMenuScreen } = usePayWorth();
+  const { currentUser, changeUsername, signOut, setActiveMenuScreen, setError } = usePayWorth();
 
   // Active Tab
   const [activeTab, setActiveTab] = useState<
@@ -37,11 +37,13 @@ export default function SettingsView() {
   >('general');
 
   // Form states
-  const [username, setUsername] = useState(user?.username || '');
-  const [email, setEmail] = useState(user?.email || '');
-  const [phone, setPhone] = useState(user?.phone || '+234 800 123 4567');
+  const [username, setUsername] = useState(currentUser?.username || '');
+  const [email, setEmail] = useState(currentUser?.email || '');
+  const [phone, setPhone] = useState((currentUser as any)?.phone || '+234 800 123 4567');
   const [country, setCountry] = useState('Nigeria');
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [usernameError, setUsernameError] = useState<string | null>(null);
+  const [updatingUsername, setUpdatingUsername] = useState(false);
 
   // Password & Security
   const [currentPassword, setCurrentPassword] = useState('');
@@ -66,20 +68,21 @@ export default function SettingsView() {
   const [currency, setCurrency] = useState('PWC');
 
   // Privacy & Data
-  const [dataSharing, setDataSharing] = useState(false);
-  const [personalizedRecs, setPersonalizedRecs] = useState(true);
-
-  // Modals
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (user) {
-      updateUser({
-        username,
-        email,
-        phone
-      });
+    setUsernameError(null);
+    if (currentUser) {
+      if (username.trim().toLowerCase() !== currentUser.username.toLowerCase()) {
+        setUpdatingUsername(true);
+        const res = await changeUsername(username.trim());
+        setUpdatingUsername(false);
+        if (!res.success) {
+          setUsernameError(res.error || 'Failed to update username.');
+          return;
+        }
+      }
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 2500);
     }
@@ -189,14 +192,28 @@ export default function SettingsView() {
 
               <div className="space-y-3">
                 <div className="space-y-1">
-                  <label className="text-[10px] text-slate-400 font-mono uppercase block">Username</label>
+                  <div className="flex justify-between items-center">
+                    <label className="text-[10px] text-slate-400 font-mono uppercase block">Username</label>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      Cooldown: 30 days
+                    </span>
+                  </div>
                   <input
                     type="text"
                     value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white outline-none focus:border-emerald-500"
+                    onChange={(e) => {
+                      setUsername(e.target.value);
+                      setUsernameError(null);
+                    }}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white outline-none focus:border-emerald-500 font-mono"
                     required
                   />
+                  {usernameError && (
+                    <p className="text-[11px] text-red-400 font-mono pt-1">{usernameError}</p>
+                  )}
+                  <p className="text-[10px] text-slate-400 font-sans">
+                    Usernames must be 3-20 characters long. You may change your handle once every 30 days.
+                  </p>
                 </div>
 
                 <div className="space-y-1">

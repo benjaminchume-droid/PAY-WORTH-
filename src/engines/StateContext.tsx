@@ -107,10 +107,12 @@ interface StateContextType {
   submitFundingRequest: (amount: number, reason: string) => Promise<boolean>;
   submitKyc: (docReference: string) => Promise<boolean>;
   setWalletPin: (pin: string) => Promise<boolean>;
+  setTransactionPin: (pin: string) => Promise<boolean>;
   verifyTransactionPin: (pin: string) => Promise<boolean>;
-  loginWithOAuth: (provider: 'google' | 'facebook') => Promise<boolean>;
+  loginWithOAuth: (provider: 'google') => Promise<boolean>;
   checkUsernameAvailability: (username: string) => Promise<{ available: boolean; suggestions?: string[] }>;
   completeProfile: (data: { username: string; displayName?: string; referralCode?: string }) => Promise<boolean>;
+  changeUsername: (newUsername: string) => Promise<{ success: boolean; error?: string }>;
   updateWalletLimits: (daily: number, monthly: number, spending: number) => Promise<boolean>;
   updateWalletStatus: (status: 'active' | 'locked' | 'frozen') => Promise<boolean>;
   fundWallet: (amount: number, provider: string) => Promise<boolean>;
@@ -160,14 +162,72 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchAppData = async (userId: string) => {
     try {
-      const { data: rawProfile, error: userError } = await supabase
+      let { data: rawProfile, error: userError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .maybeSingle();
 
       if (userError || !rawProfile) {
-        throw new Error(userError?.message || 'PayWorth services profile is not provisioned or cannot be reached.');
+        // Check if there is an authenticated Supabase user (e.g. Google OAuth sign-in)
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        if (authUser) {
+          const meta = authUser.user_metadata || {};
+          const email = authUser.email || '';
+          const baseUsername = meta.username || (email ? email.split('@')[0] : 'user') + Math.floor(100 + Math.random() * 900);
+          const genRefCode = `PW${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+          const walletNumber = `412${Math.floor(1000000 + Math.random() * 9000000)}`;
+
+          const newProfile = {
+            id: userId,
+            email,
+            username: baseUsername.toLowerCase().replace(/[^a-z0-9_]/g, ''),
+            avatar: meta.avatar_url || meta.picture || `https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200`,
+            isVerified: true,
+            pwcBalance: 100,
+            pendingBalance: 0,
+            lockedBalance: 0,
+            lifetimeEarned: 100,
+            lifetimeWithdrawn: 0,
+            trustScore: 80,
+            xp: 50,
+            level: 1,
+            membershipTier: 'Dark Bronze',
+            referralCode: genRefCode,
+            referredBy: null,
+            onboardingCompleted: false,
+            welcomeCompleted: false,
+            emailVerified: true,
+            achievementsClaimed: [],
+            dailyRewardClaimedAt: null,
+            luckyWheelSpinsRemaining: 1,
+            gamesPlayedToday: {},
+            selectedGamesToday: [],
+            completedWelcomeCampaigns: [],
+            verifiedWelcomeCampaigns: [],
+            createdAt: new Date().toISOString(),
+            kycStatus: 'unverified',
+            trustHistory: [{ date: new Date().toISOString().split('T')[0], change: 80, reason: 'Initial Google Sign-In' }],
+            virtualAccount: null,
+            walletNumber,
+            walletStatus: 'active',
+            walletPin: null,
+            dailyLimit: 5000,
+            monthlyLimit: 50000,
+            spendingLimit: 2000,
+            walletLevel: 1,
+          };
+
+          const { error: insErr } = await supabase.from('profiles').insert(newProfile);
+          if (!insErr) {
+            rawProfile = newProfile;
+          } else {
+            console.error('Failed to auto-provision profile:', insErr);
+            throw new Error(userError?.message || insErr.message || 'PayWorth profile could not be provisioned.');
+          }
+        } else {
+          throw new Error(userError?.message || 'PayWorth services profile is not provisioned or cannot be reached.');
+        }
       }
 
       const userProfile = normalizeProfile(rawProfile);
@@ -1401,7 +1461,15 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
     username: string
   ): Promise<{ available: boolean; suggestions?: string[] }> => {
     const clean = username.trim().toLowerCase();
-    if (!clean || clean.length < 3 || !/^[a-zA-Z0-9_]+$/.test(clean)) {
+    const RESERVED = ['admin', 'support', 'official', 'system', 'security', 'wallet', 'payworth', 'glasslinestudio', 'velocitylabs', 'moderator', 'verify', 'staff'];
+    
+    if (RESERVED.includes(clean)) {
+      const sug1 = `${clean}_user`;
+      const sug2 = `${clean}_pwc`;
+      return { available: false, suggestions: [sug1, sug2] };
+    }
+
+    if (!clean || clean.length < 3 || clean.length > 20 || !/^[a-z0-9_-]+$/.test(clean)) {
       return { available: false };
     }
 
@@ -1420,13 +1488,80 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
         const rand = Math.floor(100 + Math.random() * 900);
         return {
           available: false,
-          suggestions: [`${clean}${rand}`, `${clean}_pwc`, `${clean}_official`],
+          suggestions: [`${clean}${rand}`, `${clean}-pwc`, `${clean}-official`],
         };
       }
 
       return { available: true };
     } catch (e) {
       return { available: true };
+    }
+  };
+
+  // 28d2. Change Username (Settings -> Account) with 30-day cooldown and history
+  const changeUsername = async (newUsername: string): Promise<{ success: boolean; error?: string }> => {
+    if (!appState.currentUser) return { success: false, error: 'Not authenticated.' };
+    
+    const clean = newUsername.trim().toLowerCase();
+    
+    if (!clean || clean.length < 3 || clean.length > 20 || !/^[a-z0-9_-]+$/.test(clean)) {
+      return {
+        success: false,
+        error: 'Username must be 3-20 characters long and contain only lowercase letters, numbers, hyphens, or underscores.',
+      };
+    }
+
+    const RESERVED = ['admin', 'support', 'official', 'system', 'security', 'wallet', 'payworth', 'glasslinestudio', 'velocitylabs', 'moderator', 'verify', 'staff'];
+    if (RESERVED.includes(clean)) {
+      return { success: false, error: 'This username is reserved by system operations.' };
+    }
+
+    if (clean === appState.currentUser.username.toLowerCase()) {
+      return { success: false, error: 'New username is identical to your current username.' };
+    }
+
+    const lastChanged = (appState.currentUser as any).usernameLastChangedAt;
+    if (lastChanged) {
+      const days = (Date.now() - new Date(lastChanged).getTime()) / (1000 * 60 * 60 * 24);
+      if (days < 30) {
+        const remainingDays = Math.ceil(30 - days);
+        return {
+          success: false,
+          error: `Username can only be changed once every 30 days. Please try again in ${remainingDays} days.`,
+        };
+      }
+    }
+
+    const check = await checkUsernameAvailability(clean);
+    if (!check.available) {
+      return { success: false, error: 'This username is already taken. Please choose another.' };
+    }
+
+    setLoading(true);
+    try {
+      const history = (appState.currentUser as any).usernameHistory || [];
+      const updatedHistory = [...history, { oldUsername: appState.currentUser.username, changedAt: new Date().toISOString() }];
+      const now = new Date().toISOString();
+
+      const { error: upErr } = await supabase
+        .from('profiles')
+        .update({
+          username: clean,
+          usernameLastChangedAt: now,
+          usernameHistory: updatedHistory,
+        })
+        .eq('id', appState.currentUser.id);
+
+      if (upErr) throw upErr;
+
+      await fetchAppData(appState.currentUser.id);
+      setSuccessMessage(`Username successfully changed to @${clean}!`);
+      return { success: true };
+    } catch (err: any) {
+      console.error('changeUsername error:', err);
+      return { success: false, error: err.message || 'Failed to update username.' };
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1874,10 +2009,12 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
         submitFundingRequest,
         submitKyc,
         setWalletPin,
+        setTransactionPin: setWalletPin,
         verifyTransactionPin,
         loginWithOAuth,
         checkUsernameAvailability,
         completeProfile,
+        changeUsername,
         updateWalletLimits,
         updateWalletStatus,
         fundWallet,
