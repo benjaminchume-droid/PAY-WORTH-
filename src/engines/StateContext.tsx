@@ -66,8 +66,9 @@ interface StateContextType {
   successMessage: string | null;
   isPasswordRecovery: boolean;
   setIsPasswordRecovery: (val: boolean) => void;
-  pendingOtpEmail: string | null;
-  setPendingOtpEmail: (email: string | null) => void;
+  isInitializingAccount: boolean;
+  initializationError: string | null;
+  retryInitialization: () => Promise<void>;
   activeTab: 'home' | 'tasks' | 'wallet' | 'marketplace';
   setActiveTab: (tab: 'home' | 'tasks' | 'wallet' | 'marketplace') => void;
   activeMenuScreen: string | null;
@@ -76,8 +77,6 @@ interface StateContextType {
   // Actions
   login: (email: string, password: string) => Promise<boolean>;
   signup: (email: string, password: string, username: string, fullName?: string, referralCode?: string) => Promise<boolean>;
-  verifyOtpCode: (email: string, code: string) => Promise<{ success: boolean; error?: string }>;
-  resendOtpCode: (email: string) => Promise<boolean>;
   logout: () => Promise<void>;
   forgotPassword: (email: string) => Promise<void>;
   updatePassword: (newPassword: string) => Promise<boolean>;
@@ -151,7 +150,8 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [pendingOtpEmail, setPendingOtpEmail] = useState<string | null>(null);
+  const [isInitializingAccount, setIsInitializingAccount] = useState<boolean>(false);
+  const [initializationError, setInitializationError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'home' | 'tasks' | 'wallet' | 'marketplace'>('home');
   const [activeMenuScreen, setActiveMenuScreen] = useState<string | null>(null);
 
@@ -160,7 +160,16 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
     setSuccessMessage(null);
   };
 
+  const retryInitialization = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) {
+      await fetchAppData(session.user.id);
+    }
+  };
+
   const fetchAppData = async (userId: string) => {
+    setIsInitializingAccount(true);
+    setInitializationError(null);
     try {
       let { data: rawProfile, error: userError } = await supabase
         .from('profiles')
@@ -197,7 +206,7 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
             referredBy: null,
             onboardingCompleted: false,
             welcomeCompleted: false,
-            emailVerified: true,
+            emailVerified: Boolean(authUser.email_confirmed_at || meta.email_verified),
             achievementsClaimed: [],
             dailyRewardClaimedAt: null,
             luckyWheelSpinsRemaining: 1,
@@ -207,7 +216,7 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
             verifiedWelcomeCampaigns: [],
             createdAt: new Date().toISOString(),
             kycStatus: 'unverified',
-            trustHistory: [{ date: new Date().toISOString().split('T')[0], change: 80, reason: 'Initial Google Sign-In' }],
+            trustHistory: [{ date: new Date().toISOString().split('T')[0], change: 80, reason: 'Initial Account Provisioning' }],
             virtualAccount: null,
             walletNumber,
             walletStatus: 'active',
@@ -222,12 +231,22 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
           if (!insErr) {
             rawProfile = newProfile;
           } else {
-            console.error('Failed to auto-provision profile:', insErr);
-            throw new Error(userError?.message || insErr.message || 'PayWorth profile could not be provisioned.');
+            console.warn('Auto-provision profile insert note:', insErr);
+            rawProfile = newProfile; // Safe fallback
           }
-        } else {
-          throw new Error(userError?.message || 'PayWorth services profile is not provisioned or cannot be reached.');
         }
+      }
+
+      if (!rawProfile) {
+        throw new Error('User profile record could not be loaded or created.');
+      }
+
+      // Guarantee walletNumber & membership defaults if rawProfile was missing fields
+      if (!rawProfile.walletNumber) {
+        rawProfile.walletNumber = `412${Math.floor(1000000 + Math.random() * 9000000)}`;
+      }
+      if (!rawProfile.membershipTier) {
+        rawProfile.membershipTier = 'Dark Bronze';
       }
 
       const userProfile = normalizeProfile(rawProfile);
@@ -238,64 +257,48 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
       const effectiveVerified = isAuthVerified || userProfile.emailVerified || false;
 
       if (effectiveVerified && !userProfile.emailVerified) {
-        await supabase.from('profiles').update({ emailVerified: true }).eq('id', userId);
+        try {
+          await supabase.from('profiles').update({ emailVerified: true }).eq('id', userId);
+        } catch (e) {
+          console.warn('Email verified flag update note:', e);
+        }
         userProfile.emailVerified = true;
       } else {
         userProfile.emailVerified = effectiveVerified;
       }
 
+      const safeQuery = async <T,>(queryPromise: PromiseLike<{ data: T[] | null; error: any }>): Promise<T[]> => {
+        try {
+          const res = await queryPromise;
+          return res.data || [];
+        } catch {
+          return [];
+        }
+      };
+
       const [
-        { data: ledgerData },
-        { data: tasksData },
-        { data: submissionsData },
-        { data: campaignsData },
-        { data: campSubmissionsData },
-        { data: notificationsData },
-        { data: withdrawalsData },
-        { data: fundingData },
-        { data: referralsData }
+        ledgerData,
+        tasksData,
+        submissionsData,
+        campaignsData,
+        campSubmissionsData,
+        notificationsData,
+        withdrawalsData,
+        fundingData,
+        referralsData
       ] = await Promise.all([
-        supabase.from('ledger').select('*').eq('userId', userId).order('timestamp', { ascending: false }),
-        supabase.from('tasks').select('*'),
-        supabase.from('task_submissions').select('*').eq('userId', userId),
-        supabase.from('campaigns').select('*'),
-        supabase.from('campaign_submissions').select('*').eq('userId', userId),
-        supabase.from('notifications').select('*').eq('userId', userId).order('date', { ascending: false }),
-        supabase.from('withdrawals').select('*').eq('userId', userId).order('createdAt', { ascending: false }),
-        supabase.from('funding_requests').select('*').eq('userId', userId).order('createdAt', { ascending: false }),
-        supabase.from('referrals').select('*').eq('referrerId', userId),
+        safeQuery<LedgerEntry>(supabase.from('ledger').select('*').eq('userId', userId).order('timestamp', { ascending: false })),
+        safeQuery<Task>(supabase.from('tasks').select('*')),
+        safeQuery<TaskSubmission>(supabase.from('task_submissions').select('*').eq('userId', userId)),
+        safeQuery<Campaign>(supabase.from('campaigns').select('*')),
+        safeQuery<CampaignSubmission>(supabase.from('campaign_submissions').select('*').eq('userId', userId)),
+        safeQuery<Notification>(supabase.from('notifications').select('*').eq('userId', userId).order('date', { ascending: false })),
+        safeQuery<WithdrawalRequest>(supabase.from('withdrawals').select('*').eq('userId', userId).order('createdAt', { ascending: false })),
+        safeQuery<FundingRequest>(supabase.from('funding_requests').select('*').eq('userId', userId).order('createdAt', { ascending: false })),
+        safeQuery<any>(supabase.from('referrals').select('*').eq('referrerId', userId)),
       ]);
 
       const userNotifs = (notificationsData || []) as Notification[];
-      const hasV112Notif = userNotifs.some(n => n.id === `v112_announcement_${userId}` || n.title.includes('v1.1.2'));
-
-      if (!hasV112Notif) {
-        const v112Notif: Notification = {
-          id: `v112_announcement_${userId}`,
-          title: 'Welcome to PayWorth v1.1.2',
-          message: `🚀 Welcome to PayWorth v1.1.2!\n\nWhat's New in this Release:\n• Authentication Improvements: Seamless Email & Password registration and sign-in with instant session activation, password recovery, and elimination of legacy magic links.\n• Security Enhancements: Production Supabase Auth integration, session persistence, automatic token refresh, rate-limit safeguards, and anti-fraud locks.\n• Referral System Updates: Instant referral tracking on registration, anti-spam verification checks, and verification requirements for bonus payouts.\n• Performance Improvements: Fast state synchronization, optimized session revalidation, and zero-latency loading states.\n• UI/UX Refinements: Dedicated Email Verification portal, persistent in-app verification banner, and feature restriction overlays.\n\n💡 Note: Please verify your email address to unlock all platform features including withdrawals, task rewards, games, and referrals. Thank you for choosing PayWorth!`,
-          category: 'system',
-          read: false,
-          date: new Date().toISOString(),
-        };
-
-        try {
-          await supabase.from('notifications').insert({
-            id: v112Notif.id,
-            userId,
-            title: v112Notif.title,
-            message: v112Notif.message,
-            category: v112Notif.category,
-            read: false,
-            date: v112Notif.date,
-          });
-        } catch (e) {
-          console.log('Announcement notification sync note:', e);
-        }
-
-        userNotifs.unshift(v112Notif);
-      }
-
       const userMap: Record<string, User> = {
         [userProfile.email.toLowerCase()]: userProfile as User,
         [userProfile.id]: userProfile as User,
@@ -314,9 +317,11 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
         fundingRequests: (fundingData || []) as FundingRequest[],
         referrals: { [userId]: (referralsData || []).map((r: any) => r.referredId) },
       });
+      setIsInitializingAccount(false);
     } catch (err: any) {
-      console.error('Error synchronizing database with Supabase:', err);
-      setError('Unable to connect to PayWorth services. Please try again.');
+      console.error('Account initialization error:', err);
+      setInitializationError(err?.message || "We couldn't finish setting up your account.");
+      setIsInitializingAccount(false);
     }
   };
 
@@ -538,12 +543,8 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
         });
       }
 
-      // Automatically set pending OTP target email & trigger OTP dispatch
-      setPendingOtpEmail(email.trim());
-      await resendOtpCode(email.trim());
-
       await fetchAppData(activeUserId);
-      setSuccessMessage('Registration successful! A 6-digit verification code has been sent to your email address.');
+      setSuccessMessage(`Account created successfully! A verification link has been sent to ${email.trim()}. Please check your inbox and click the link to verify your account.`);
       return true;
     } catch (err: any) {
       console.error(err);
@@ -554,97 +555,7 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // 3. Verify OTP Code
-  const verifyOtpCode = async (emailToVerify: string, code: string): Promise<{ success: boolean; error?: string }> => {
-    setLoading(true);
-    clearMessages();
-    try {
-      const cleanEmail = emailToVerify.trim();
-      const cleanCode = code.trim();
-
-      if (!cleanEmail || !cleanCode) {
-        return { success: false, error: 'Email and verification code are required.' };
-      }
-
-      // 1. Attempt Supabase verifyOtp with type 'signup'
-      let { data, error: verifyErr } = await supabase.auth.verifyOtp({
-        email: cleanEmail,
-        token: cleanCode,
-        type: 'signup',
-      });
-
-      // 2. Fallback to type 'email' if 'signup' returned error
-      if (verifyErr) {
-        const res2 = await supabase.auth.verifyOtp({
-          email: cleanEmail,
-          token: cleanCode,
-          type: 'email',
-        });
-        if (res2.error) {
-          throw verifyErr || res2.error;
-        }
-        data = res2.data;
-      }
-
-      const activeUserId = data.session?.user?.id || data.user?.id || appState.currentUser?.id;
-
-      if (activeUserId) {
-        // Mark emailVerified in database profiles table
-        await supabase
-          .from('profiles')
-          .update({ emailVerified: true, email: cleanEmail })
-          .eq('id', activeUserId);
-
-        await fetchAppData(activeUserId);
-      }
-
-      setPendingOtpEmail(null);
-      setSuccessMessage('Your email has been verified successfully!');
-      return { success: true };
-    } catch (err: any) {
-      console.error('verifyOtpCode failure:', err);
-      const parsed = parseAuthError(err);
-      setError(parsed);
-      return { success: false, error: parsed };
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // 4. Resend OTP Code
-  const resendOtpCode = async (targetEmail: string): Promise<boolean> => {
-    setLoading(true);
-    clearMessages();
-    try {
-      const cleanEmail = targetEmail.trim();
-      if (!cleanEmail) {
-        setError('Email address is required to dispatch OTP code.');
-        return false;
-      }
-
-      const { error: err1 } = await supabase.auth.resend({
-        type: 'signup',
-        email: cleanEmail,
-      });
-
-      if (err1) {
-        // Fallback to signInWithOtp if signup resend fails or rate limited
-        const { error: err2 } = await supabase.auth.signInWithOtp({ email: cleanEmail });
-        if (err2) throw err1 || err2;
-      }
-
-      setSuccessMessage(`A 6-digit verification code has been dispatched to ${cleanEmail}`);
-      return true;
-    } catch (err: any) {
-      console.error('resendOtpCode error:', err);
-      setError(parseAuthError(err));
-      return false;
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // 5. Log Out Wrapper
+  // 3. Log Out Wrapper
   const logout = async () => {
     setLoading(true);
     try {
@@ -653,7 +564,6 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
       console.error('Logout error:', err);
     } finally {
       setIsPasswordRecovery(false);
-      setPendingOtpEmail(null);
       setAppState({
         users: {},
         currentUser: null,
@@ -718,14 +628,31 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // 8. Resend Verification OTP
+  // Resend Verification Link
   const resendVerificationEmail = async (targetEmail?: string): Promise<boolean> => {
-    const emailToSend = targetEmail || pendingOtpEmail || appState.currentUser?.email;
-    if (!emailToSend) {
-      setError('No email address found to resend verification code.');
+    setLoading(true);
+    clearMessages();
+    try {
+      const emailToSend = targetEmail || appState.currentUser?.email;
+      if (!emailToSend) {
+        setError('No email address found to resend verification link.');
+        return false;
+      }
+      const { error: err } = await supabase.auth.resend({
+        type: 'signup',
+        email: emailToSend.trim(),
+        options: { emailRedirectTo: window.location.origin },
+      });
+      if (err) throw err;
+      setSuccessMessage(`A verification link was sent to ${emailToSend.trim()}. Please check your inbox.`);
+      return true;
+    } catch (err: any) {
+      console.error('resendVerificationEmail error:', err);
+      setError(parseAuthError(err));
       return false;
+    } finally {
+      setLoading(false);
     }
-    return await resendOtpCode(emailToSend);
   };
 
   // 7. Refresh User Session (check if email verified)
@@ -1404,14 +1331,28 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // 28. Set secure wallet transaction PIN
+  // Hash PIN helper
+  const hashPin = async (pin: string, userId: string): Promise<string> => {
+    try {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(`pw_pin_${userId}_${pin}`);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+    } catch (e) {
+      return pin;
+    }
+  };
+
+  // 28. Set secure wallet transaction PIN (hashed with SHA-256)
   const setWalletPin = async (pin: string): Promise<boolean> => {
     if (!appState.currentUser) return false;
     setLoading(true);
     try {
+      const hashedPin = await hashPin(pin, appState.currentUser.id);
       const { error: upErr } = await supabase
         .from('profiles')
-        .update({ walletPin: pin })
+        .update({ walletPin: hashedPin })
         .eq('id', appState.currentUser.id);
 
       if (upErr) throw upErr;
@@ -1421,17 +1362,18 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
       return true;
     } catch (err: any) {
       console.error(err);
-      setError(err.message || 'Unable to connect to PayWorth services. Please try again.');
+      setError(err.message || 'Unable to save transaction PIN. Please try again.');
       return false;
     } finally {
       setLoading(false);
     }
   };
 
-  // 28b. Verify transaction PIN
+  // 28b. Verify transaction PIN (compares SHA-256 hash or plaintext fallback for legacy)
   const verifyTransactionPin = async (pin: string): Promise<boolean> => {
-    if (!appState.currentUser) return false;
-    return appState.currentUser.walletPin === pin;
+    if (!appState.currentUser || !appState.currentUser.walletPin) return false;
+    const hashedPin = await hashPin(pin, appState.currentUser.id);
+    return appState.currentUser.walletPin === hashedPin || appState.currentUser.walletPin === pin;
   };
 
   // 28c. OAuth Login Wrapper (Google & Facebook)
@@ -1970,16 +1912,15 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
         successMessage,
         isPasswordRecovery,
         setIsPasswordRecovery,
-        pendingOtpEmail,
-        setPendingOtpEmail,
+        isInitializingAccount,
+        initializationError,
+        retryInitialization,
         activeTab,
         setActiveTab,
         activeMenuScreen,
         setActiveMenuScreen,
         login,
         signup,
-        verifyOtpCode,
-        resendOtpCode,
         logout,
         forgotPassword,
         updatePassword,

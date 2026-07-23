@@ -2,13 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePayWorth } from '../engines/StateContext';
 import { Coins, LogIn, UserPlus, Mail, ShieldAlert, Lock, RefreshCw, KeyRound } from 'lucide-react';
-import EmailOTPVerification from './EmailOTPVerification';
 import PasswordStrengthValidator, { evaluatePasswordStrength } from './PasswordStrengthValidator';
 
 export default function Auth() {
   const {
     currentUser,
-    pendingOtpEmail,
     login,
     signup,
     loginWithOAuth,
@@ -104,7 +102,10 @@ export default function Auth() {
       return;
     }
 
-    await signup(email, password, username, referralCode || undefined);
+    const ok = await signup(email, password, username, referralCode || undefined);
+    if (ok) {
+      setMode('signin');
+    }
   };
 
   const handleForgot = async (e: React.FormEvent) => {
@@ -163,11 +164,6 @@ export default function Auth() {
       setCooldown(60);
     }
   };
-
-  // If user is undergoing registration or authenticated but email is not verified, show OTP verification screen
-  if (pendingOtpEmail || (currentUser && !currentUser.emailVerified)) {
-    return <EmailOTPVerification email={pendingOtpEmail || currentUser?.email} />;
-  }
 
   const displayError = localError || error;
 

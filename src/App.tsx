@@ -12,9 +12,17 @@ import MarketplaceView from './components/MarketplaceView';
 import MenuView from './components/MenuView';
 import SEOAndRouteManager from './components/SEOAndRouteManager';
 import VerificationEngine from './components/VerificationEngine';
+import InitializationScreen from './components/InitializationScreen';
 
 function AppContent() {
-  const { currentUser, activeTab, activeMenuScreen } = usePayWorth();
+  const {
+    currentUser,
+    activeTab,
+    activeMenuScreen,
+    isInitializingAccount,
+    initializationError,
+    retryInitialization
+  } = usePayWorth();
 
   // Check if current URL route is the verification portal or callback payload
   const currentPath = window.location.pathname;
@@ -35,7 +43,17 @@ function AppContent() {
 
   const isPublicPage = activeMenuScreen && ['about', 'privacy', 'terms', 'security', 'contact', 'help'].includes(activeMenuScreen);
 
-  // 1. If not authenticated and not on a public page, render the Auth portal
+  // 1. If account is currently initializing (provisioning profile, wallet, membership) or had an init error
+  if (isInitializingAccount || initializationError) {
+    return (
+      <InitializationScreen
+        error={initializationError}
+        onRetry={retryInitialization}
+      />
+    );
+  }
+
+  // 2. If not authenticated and not on a public page, render the Auth portal
   if (!currentUser && !isPublicPage) {
     return <Auth />;
   }
