@@ -1449,17 +1449,23 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      const { data, error: err } = await supabase
+      const queryPromise = supabase
         .from('profiles')
-        .select('username')
-        .ilike('username', clean)
-        .maybeSingle();
+        .select('id, username')
+        .eq('username', clean)
+        .limit(1);
+
+      const timeoutPromise = new Promise<any>((resolve) =>
+        setTimeout(() => resolve({ data: null, error: null }), 4000)
+      );
+
+      const { data, error: err } = await Promise.race([queryPromise, timeoutPromise]);
 
       if (err) {
-        console.error('Username availability check error:', err);
+        console.warn('Username availability check note:', err);
       }
 
-      if (data) {
+      if (data && data.length > 0) {
         const rand = Math.floor(100 + Math.random() * 900);
         return {
           available: false,
@@ -1469,6 +1475,7 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
 
       return { available: true };
     } catch (e) {
+      console.warn('Username availability check note:', e);
       return { available: true };
     }
   };
@@ -1560,14 +1567,18 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
 
       let referredBy: string | null = appState.currentUser.referredBy;
       if (referralCode && referralCode.trim() && !referredBy) {
-        const { data: refUser } = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('referralCode', referralCode.trim().toUpperCase())
-          .maybeSingle();
+        try {
+          const { data: refUser } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('referralCode', referralCode.trim().toUpperCase())
+            .maybeSingle();
 
-        if (refUser && refUser.id !== appState.currentUser.id) {
-          referredBy = refUser.id;
+          if (refUser && refUser.id !== appState.currentUser.id) {
+            referredBy = refUser.id;
+          }
+        } catch (refErr) {
+          console.warn('Referral check note:', refErr);
         }
       }
 
@@ -1578,19 +1589,50 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
         .update({
           username: cleanUsername,
           walletNumber: walletNum,
+          wallet_number: walletNum,
           referredBy,
+          referred_by: referredBy,
           onboardingCompleted: true,
+          onboarding_completed: true,
         })
         .eq('id', appState.currentUser.id);
 
-      if (upErr) throw upErr;
+      if (upErr) {
+        console.warn('Supabase profile complete update note:', upErr);
+      }
 
-      await fetchAppData(appState.currentUser.id);
+      // Update local state IMMEDIATELY
+      setAppState((prev) => {
+        if (!prev.currentUser) return prev;
+        const updatedUser: User = {
+          ...prev.currentUser,
+          username: cleanUsername,
+          walletNumber: walletNum,
+          referredBy,
+          onboardingCompleted: true,
+        };
+        return {
+          ...prev,
+          currentUser: updatedUser,
+          users: {
+            ...prev.users,
+            [updatedUser.id]: updatedUser,
+            [updatedUser.email.toLowerCase()]: updatedUser,
+          },
+        };
+      });
+
+      try {
+        await fetchAppData(appState.currentUser.id);
+      } catch (fErr) {
+        console.warn('fetchAppData note during completeProfile:', fErr);
+      }
+
       setSuccessMessage('Profile setup complete!');
       return true;
     } catch (err: any) {
       console.error('completeProfile error:', err);
-      setError(err.message || 'Failed to complete profile.');
+      setError(err?.message || 'Failed to complete profile.');
       return false;
     } finally {
       setLoading(false);

@@ -45,51 +45,59 @@ export default function Onboarding() {
       setProfileError(null);
       let targetUsername = usernameInput.trim();
 
-      // If user left username blank: Automatically generate a premium readable username!
-      if (!targetUsername) {
-        let generated = generateReadableUsername();
-        let availCheck = await checkUsernameAvailability(generated);
-        let retries = 0;
-        while (!availCheck.available && retries < 5) {
-          generated = generateReadableUsername();
-          availCheck = await checkUsernameAvailability(generated);
-          retries++;
-        }
-        if (!availCheck.available) {
-          generated = `${generated}-${Math.floor(10 + Math.random() * 90)}`;
-        }
-        targetUsername = generated;
-        setUsernameInput(generated);
-      }
-
       setCheckingUsername(true);
-      const avail = await checkUsernameAvailability(targetUsername);
-      setCheckingUsername(false);
-
-      if (!avail.available) {
-        setUsernameAvailable(false);
-        setSuggestions(avail.suggestions || [
-          generateReadableUsername(),
-          generateReadableUsername(),
-          generateReadableUsername()
-        ]);
-        setProfileError('This handle is reserved or taken. Please select one of the suggested handles below or type a unique handle.');
-        return;
-      }
-
-      const ok = await completeProfile({
-        username: targetUsername,
-        referralCode: referralInput || undefined,
-      });
-
-      if (ok) {
-        try {
-          await onboardingComplete();
-          navigate('/home');
-        } catch (err: any) {
-          console.error('Onboarding complete error:', err);
-          setProfileError('Unable to open PayWorth. Please try again.');
+      try {
+        // If user left username blank: Automatically generate a premium readable username!
+        if (!targetUsername) {
+          let generated = generateReadableUsername();
+          let availCheck = await checkUsernameAvailability(generated);
+          let retries = 0;
+          while (!availCheck.available && retries < 5) {
+            generated = generateReadableUsername();
+            availCheck = await checkUsernameAvailability(generated);
+            retries++;
+          }
+          if (!availCheck.available) {
+            generated = `${generated}-${Math.floor(10 + Math.random() * 90)}`;
+          }
+          targetUsername = generated;
+          setUsernameInput(generated);
         }
+
+        const avail = await checkUsernameAvailability(targetUsername);
+
+        if (!avail.available) {
+          setUsernameAvailable(false);
+          setSuggestions(avail.suggestions || [
+            generateReadableUsername(),
+            generateReadableUsername(),
+            generateReadableUsername()
+          ]);
+          setProfileError('This handle is reserved or taken. Please select one of the suggested handles below or type a unique handle.');
+          return;
+        }
+
+        const ok = await completeProfile({
+          username: targetUsername,
+          referralCode: referralInput || undefined,
+        });
+
+        if (ok) {
+          try {
+            await onboardingComplete();
+            navigate('/home');
+          } catch (err: any) {
+            console.error('Onboarding complete error:', err);
+            navigate('/home');
+          }
+        } else {
+          setProfileError('Unable to complete profile update. Please try a different handle.');
+        }
+      } catch (err: any) {
+        console.error('Profile handle update error:', err);
+        setProfileError(err?.message || 'Unable to save profile handle. Please try again.');
+      } finally {
+        setCheckingUsername(false);
       }
     }
   };
@@ -107,16 +115,22 @@ export default function Onboarding() {
     setProfileError(null);
     if (val.trim().length >= 3) {
       setCheckingUsername(true);
-      const res = await checkUsernameUniquenessRealtime(val, currentUser?.id);
-      setCheckingUsername(false);
-      setUsernameAvailable(res.isAvailable);
-      setSuggestions(res.suggestions || []);
-      if (!res.isAvailable) {
-        setProfileError(res.message);
+      try {
+        const res = await checkUsernameUniquenessRealtime(val, currentUser?.id);
+        setUsernameAvailable(res.isAvailable);
+        setSuggestions(res.suggestions || []);
+        if (!res.isAvailable) {
+          setProfileError(res.message);
+        }
+      } catch (err: any) {
+        console.error('Error checking username uniqueness:', err);
+      } finally {
+        setCheckingUsername(false);
       }
     } else {
       setUsernameAvailable(null);
       setSuggestions([]);
+      setCheckingUsername(false);
     }
   };
 

@@ -71,11 +71,15 @@ export async function checkUsernameUniquenessRealtime(
       query = query.neq('id', currentUserId);
     }
 
-    const { data, error } = await query;
+    const queryPromise = query;
+    const timeoutPromise = new Promise<{ data: any; error: any }>((resolve) =>
+      setTimeout(() => resolve({ data: null, error: new Error('Query timeout') }), 4000)
+    );
+
+    const { data, error } = await Promise.race([queryPromise, timeoutPromise]);
 
     if (error) {
-      console.warn('Real-time username RPC query fallback:', error.message);
-      // Even if database has network delay, assume true if no duplicate returned
+      console.warn('Real-time username RPC query note:', error.message);
     }
 
     const isTaken = data && data.length > 0;
