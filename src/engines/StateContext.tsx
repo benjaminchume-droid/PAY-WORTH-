@@ -33,8 +33,8 @@ export function normalizeProfile(raw: any): User {
     membershipTier: (raw.membershipTier || raw.membership_tier || 'Dark Bronze') as MembershipTier,
     referralCode: raw.referralCode || raw.referral_code || '',
     referredBy: raw.referredBy || raw.referred_by || null,
-    onboardingCompleted: Boolean(raw.onboardingCompleted ?? raw.onboarding_completed ?? true),
-    welcomeCompleted: Boolean(raw.welcomeCompleted ?? raw.welcome_completed ?? true),
+    onboardingCompleted: Boolean(raw.onboardingCompleted ?? raw.onboarding_completed ?? false),
+    welcomeCompleted: Boolean(raw.welcomeCompleted ?? raw.welcome_completed ?? false),
     emailVerified: Boolean(raw.emailVerified ?? raw.email_verified ?? false),
     achievementsClaimed: raw.achievementsClaimed || raw.achievements_claimed || [],
     dailyRewardClaimedAt: raw.dailyRewardClaimedAt || raw.daily_reward_claimed_at || null,
@@ -718,12 +718,22 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
     try {
       const { error: upErr } = await supabase
         .from('profiles')
-        .update({ onboardingCompleted: true })
+        .update({ onboardingCompleted: true, onboarding_completed: true })
         .eq('id', appState.currentUser.id);
-      if (upErr) throw upErr;
-      await fetchAppData(appState.currentUser.id);
+      if (upErr) console.warn('Supabase profile onboarding update note:', upErr);
+
+      setAppState((prev) => {
+        if (!prev.currentUser) return prev;
+        const updatedUser = { ...prev.currentUser, onboardingCompleted: true };
+        return {
+          ...prev,
+          currentUser: updatedUser,
+          users: { ...prev.users, [updatedUser.id]: updatedUser }
+        };
+      });
     } catch (err) {
       console.error('Error completing onboarding:', err);
+      throw err;
     }
   };
 
@@ -731,14 +741,26 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
   const welcomeComplete = async (dontShowAgain: boolean) => {
     if (!appState.currentUser) return;
     try {
-      const { error: upErr } = await supabase
-        .from('profiles')
-        .update({ welcomeCompleted: dontShowAgain })
-        .eq('id', appState.currentUser.id);
-      if (upErr) throw upErr;
-      await fetchAppData(appState.currentUser.id);
+      if (dontShowAgain) {
+        const { error: upErr } = await supabase
+          .from('profiles')
+          .update({ welcomeCompleted: true, welcome_completed: true })
+          .eq('id', appState.currentUser.id);
+        if (upErr) console.warn('Supabase profile welcome update note:', upErr);
+      }
+
+      setAppState((prev) => {
+        if (!prev.currentUser) return prev;
+        const updatedUser = { ...prev.currentUser, welcomeCompleted: true };
+        return {
+          ...prev,
+          currentUser: updatedUser,
+          users: { ...prev.users, [updatedUser.id]: updatedUser }
+        };
+      });
     } catch (err) {
       console.error('Error completing welcome:', err);
+      throw err;
     }
   };
 

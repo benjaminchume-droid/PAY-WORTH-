@@ -1,13 +1,31 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePayWorth } from '../engines/StateContext';
-import { Sparkles, HelpCircle, Gift, Coins, Users, ShieldCheck, Check } from 'lucide-react';
+import { Sparkles, HelpCircle, Gift, Coins, Users, ShieldCheck, Check, AlertCircle } from 'lucide-react';
 
 export default function WelcomePopup() {
   const { currentUser, welcomeComplete } = usePayWorth();
+  const navigate = useNavigate();
   const [dontShowAgain, setDontShowAgain] = useState(false);
+  const [isNavigating, setIsNavigating] = useState(false);
+  const [navError, setNavError] = useState<string | null>(null);
 
   if (!currentUser || currentUser.welcomeCompleted) return null;
+
+  const handleStartExploring = async () => {
+    setNavError(null);
+    setIsNavigating(true);
+    try {
+      await welcomeComplete(dontShowAgain);
+      navigate('/home');
+    } catch (err: any) {
+      console.error('Welcome screen navigation error:', err);
+      setNavError('Unable to open PayWorth. Please try again.');
+    } finally {
+      setIsNavigating(false);
+    }
+  };
 
   return (
     <AnimatePresence>
@@ -79,8 +97,9 @@ export default function WelcomePopup() {
 
           <div className="flex items-center gap-2 mb-5">
             <button
+              type="button"
               onClick={() => setDontShowAgain(!dontShowAgain)}
-              className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${
+              className={`w-4 h-4 rounded border flex items-center justify-center transition-all cursor-pointer ${
                 dontShowAgain
                   ? 'bg-emerald-500 border-emerald-500 text-slate-950'
                   : 'border-white/20 bg-white/5 hover:border-white/40'
@@ -93,11 +112,20 @@ export default function WelcomePopup() {
             </span>
           </div>
 
+          {navError && (
+            <div className="mb-4 text-[11px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl p-3 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+              <span>{navError}</span>
+            </div>
+          )}
+
           <button
-            onClick={() => welcomeComplete(dontShowAgain)}
-            className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs py-3 rounded-xl transition-all shadow-lg active:scale-95"
+            type="button"
+            onClick={handleStartExploring}
+            disabled={isNavigating}
+            className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs py-3 rounded-xl transition-all shadow-lg active:scale-95 cursor-pointer disabled:opacity-50"
           >
-            Start Exploring PayWorth
+            {isNavigating ? 'Opening PayWorth...' : 'Start Exploring PayWorth'}
           </button>
         </motion.div>
       </div>

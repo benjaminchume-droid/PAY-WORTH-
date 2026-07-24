@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePayWorth } from '../engines/StateContext';
 import { generateReadableUsername, saveOnboardingDraft, getOnboardingDraft } from '../lib/draftRecovery';
@@ -7,6 +8,7 @@ import { Coins, ShieldAlert, Award, ArrowRight, ArrowLeft, Layers, Trophy, UserC
 
 export default function Onboarding() {
   const { currentUser, onboardingComplete, checkUsernameAvailability, completeProfile, loading, setActiveMenuScreen } = usePayWorth();
+  const navigate = useNavigate();
   
   // Restore draft or start at page 1
   const savedDraft = getOnboardingDraft();
@@ -81,7 +83,13 @@ export default function Onboarding() {
       });
 
       if (ok) {
-        onboardingComplete();
+        try {
+          await onboardingComplete();
+          navigate('/home');
+        } catch (err: any) {
+          console.error('Onboarding complete error:', err);
+          setProfileError('Unable to open PayWorth. Please try again.');
+        }
       }
     }
   };
@@ -125,8 +133,14 @@ export default function Onboarding() {
     }
   };
 
-  const handleSkip = () => {
-    onboardingComplete();
+  const handleSkip = async () => {
+    try {
+      await onboardingComplete();
+      navigate('/home');
+    } catch (err: any) {
+      console.error('Onboarding skip error:', err);
+      setProfileError('Unable to open PayWorth. Please try again.');
+    }
   };
 
   return (
