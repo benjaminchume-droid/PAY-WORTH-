@@ -589,8 +589,10 @@ export function AchievementsView() {
   };
 
   // Compile completions list
-  const userSubmissions = state.taskSubmissions.filter((s) => s.userId === currentUser?.id && s.status === 'approved').length;
-  const referralCount = (Object.values(state.users) as User[]).filter((u) => u.referredBy === currentUser?.id).length;
+  const taskSubs = state?.taskSubmissions || [];
+  const usersObj = state?.users || {};
+  const userSubmissions = taskSubs.filter((s) => s.userId === currentUser?.id && s.status === 'approved').length;
+  const referralCount = (Object.values(usersObj) as User[]).filter((u) => u.referredBy === currentUser?.id).length;
   const gamesPlayed = (Object.values(currentUser?.gamesPlayedToday || {}) as number[]).reduce((a, b) => a + b, 0);
 
   const getProgress = (targetType: string, targetValue: number) => {
@@ -691,7 +693,8 @@ export function ReferralsView() {
   };
 
   // Find referred list
-  const referredUsers = (Object.values(state.users) as User[]).filter((u) => u.referredBy === currentUser?.id);
+  const usersObj = state?.users || {};
+  const referredUsers = (Object.values(usersObj) as User[]).filter((u) => u.referredBy === currentUser?.id);
 
   return (
     <div className="space-y-4">
@@ -761,7 +764,8 @@ export function PayFundsView() {
   const [applying, setApplying] = useState(false);
 
   // Filter requests
-  const myRequests = state.fundingRequests.filter((f) => f.userId === currentUser?.id);
+  const fundReqs = state?.fundingRequests || [];
+  const myRequests = fundReqs.filter((f) => f.userId === currentUser?.id);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -862,7 +866,7 @@ export function PayFundsView() {
    ========================================================================== */
 export function StatisticsView() {
   const { currentUser, state } = usePayWorth();
-  const historyList = currentUser ? (state.ledger[currentUser.id] || []) : [];
+  const historyList = currentUser ? (state?.ledger?.[currentUser.id] || []) : [];
 
   // Manual bar calculations based on transaction category distribution (PWC categories)
   const stats = {
@@ -940,7 +944,7 @@ export function StatisticsView() {
    ========================================================================== */
 export function NotificationsView() {
   const { currentUser, state, markNotificationRead, clearNotifications } = usePayWorth();
-  const list = currentUser ? (state.notifications[currentUser.id] || []) : [];
+  const list = currentUser ? (state?.notifications?.[currentUser.id] || []) : [];
 
   return (
     <div className="space-y-4">

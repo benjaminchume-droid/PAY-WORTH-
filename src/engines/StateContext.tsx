@@ -60,6 +60,7 @@ export function normalizeProfile(raw: any): User {
 
 interface StateContextType {
   appState: AppState;
+  state: AppState;
   loading: boolean;
   currentUser: User | null;
   error: string | null;
@@ -1938,6 +1939,7 @@ export function PayWorthProvider({ children }: { children: React.ReactNode }) {
     <StateContext.Provider
       value={{
         appState,
+        state: appState,
         loading,
         currentUser: appState.currentUser,
         error,

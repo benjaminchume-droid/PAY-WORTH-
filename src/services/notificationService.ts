@@ -27,14 +27,14 @@ export class NotificationService {
   /**
    * Filter unread notifications count
    */
-  public static getUnreadCount(notifications: Notification[]): number {
-    return notifications.filter(n => !n.read).length;
+  public static getUnreadCount(notifications?: Notification[] | null): number {
+    return (notifications || []).filter(n => n && !n.read).length;
   }
 
   /**
    * Mark all notifications as read
    */
-  public static markAllAsRead(notifications: Notification[]): Notification[] {
-    return notifications.map(n => ({ ...n, read: true }));
+  public static markAllAsRead(notifications?: Notification[] | null): Notification[] {
+    return (notifications || []).map(n => ({ ...n, read: true }));
   }
 }

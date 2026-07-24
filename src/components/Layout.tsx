@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 
 export default function Layout({ children }: { children?: React.ReactNode }) {
-  const { currentUser, logout, state } = usePayWorth();
+  const { currentUser, logout, state, appState } = usePayWorth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -30,8 +30,8 @@ export default function Layout({ children }: { children?: React.ReactNode }) {
   const [rightDropdownOpen, setRightDropdownOpen] = useState(false);
 
   // Unread notifications count
-  const userNotifs = currentUser ? (state.notifications[currentUser.id] || []) : [];
-  const unreadCount = userNotifs.filter((n) => !n.read).length;
+  const userNotifs = currentUser ? ((state?.notifications?.[currentUser.id] || appState?.notifications?.[currentUser.id]) || []) : [];
+  const unreadCount = userNotifs.filter((n) => n && !n.read).length;
 
   const isAdmin = currentUser?.email === 'admin@payworth.com' || (currentUser as any)?.role === 'admin';
   const sidebarScreens = getSidebarScreens(isAdmin);
